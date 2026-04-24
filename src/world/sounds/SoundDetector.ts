@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import {Script} from '../../core/Script';
+import {
+  AudioClassifierResult,
+  SoundDetectedEventDetail,
+  Category,
+} from './DetectedSounds';
 import {WorldOptions} from '../WorldOptions';
 import {AudioListener} from '../../sound/AudioListener';
 
@@ -95,7 +100,7 @@ export class SoundDetector extends Script {
             sampleRate: sampleRate,
           };
 
-          let categories: any[] | null = null;
+          let categories: Category[] | null = null;
 
           // Buffer up to specified samples for meaningful classification!
           if (this.accumulatedAudio.length >= this.chunkSamples) {
@@ -108,19 +113,24 @@ export class SoundDetector extends Script {
 
             // Pass sample rate as second argument to classify if MediaPipe expects it
             console.log('Sample Rate: ', sampleRate);
-            const result = this.audioClassifier.classify(chunk, sampleRate);
+            const result: AudioClassifierResult = this.audioClassifier.classify(
+              chunk,
+              sampleRate
+            );
             categories = []; // Classification happened, initialize to empty array
             if (result && result.length > 0) {
               categories = result[0].classifications?.[0]?.categories || [];
             }
           }
 
+          const detail: SoundDetectedEventDetail = {
+            categories: categories,
+            debug: debugData,
+          };
+
           this.dispatchEvent({
             type: 'soundDetected',
-            detail: {
-              categories: categories,
-              debug: debugData,
-            },
+            detail: detail,
           } as any);
         },
       });
