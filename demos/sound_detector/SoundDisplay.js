@@ -27,12 +27,8 @@ export class SoundDisplay extends xb.Script {
         }
 
         const debugStr = this.getDebugString(result);
-
-        if (this.lastClassification) {
-          this.hudText.text = `${this.lastClassification}\n${debugStr}`;
-        } else {
-          this.hudText.text = `Listening...\n${debugStr}`;
-        }
+        const baseText = this.lastClassification || 'Listening...';
+        this.hudText.text = debugStr ? `${baseText}\n${debugStr}` : baseText;
         this.hudText.sync();
       });
 
@@ -45,7 +41,7 @@ export class SoundDisplay extends xb.Script {
 
   initHudText() {
     this.hudText = new Text();
-    this.hudText.text = 'Initialized';
+    this.hudText.text = 'Pinch to start';
     this.hudText.fontSize = 0.05;
     this.hudText.color = 0x00ffff;
     this.hudText.maxWidth = 0.5;
@@ -83,7 +79,7 @@ export class SoundDisplay extends xb.Script {
     const debug = result ? result.debug : null;
     if (debug) {
       const {rms, bufferSize, sampleRate} = debug;
-      return `RMS: ${rms.toFixed(4)} | B: ${bufferSize} | S: ${sampleRate}`;
+      return `Buffer Size: ${bufferSize} | Sample Rate: ${sampleRate} | RMS: ${rms.toFixed(4)}`;
     }
     return '';
   }
@@ -101,7 +97,7 @@ export class SoundDisplay extends xb.Script {
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quaternion);
 
       // Position text 0.5m in front of camera
-      this.hudText.position.copy(position).addScaledVector(forward, 0.5);
+      this.hudText.position.copy(position).addScaledVector(forward, 1.0);
       this.hudText.quaternion.copy(quaternion);
     }
   }

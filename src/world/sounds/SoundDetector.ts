@@ -24,7 +24,11 @@ export class SoundDetector extends Script<SoundDetectorEventMap> {
 
   private _detectorBackends = new Map<string, Promise<BaseDetectorBackend>>();
   private audioListener?: AudioListener;
-  private isListening = false;
+  private _isListening = false;
+
+  get isListening(): boolean {
+    return this._isListening;
+  }
 
   // Injected dependencies
   private options?: WorldOptions;
@@ -40,7 +44,7 @@ export class SoundDetector extends Script<SoundDetectorEventMap> {
    * Starts listening to the default mic input stream.
    */
   async startListening() {
-    if (this.isListening) return;
+    if (this._isListening) return;
 
     if (!this.audioListener) {
       this.audioListener = new AudioListener({
@@ -55,7 +59,7 @@ export class SoundDetector extends Script<SoundDetectorEventMap> {
     const backend = await this.getOrCreateDetectorBackend(sampleRate);
 
     try {
-      this.isListening = true;
+      this._isListening = true;
       await this.audioListener.startCapture({
         onAudioData: async (buffer: ArrayBuffer) => {
           if (!backend) return;
@@ -78,7 +82,7 @@ export class SoundDetector extends Script<SoundDetectorEventMap> {
         'SoundDetector: Failed to start audio classification:',
         error
       );
-      this.isListening = false;
+      this._isListening = false;
     }
   }
 
@@ -86,9 +90,9 @@ export class SoundDetector extends Script<SoundDetectorEventMap> {
    * Stops listening and releases resources.
    */
   stopListening() {
-    if (!this.isListening) return;
+    if (!this._isListening) return;
     this.audioListener?.stopCapture();
-    this.isListening = false;
+    this._isListening = false;
     console.log('SoundDetector: Stopped listening.');
   }
 

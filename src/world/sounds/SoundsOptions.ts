@@ -3,6 +3,7 @@ import {DeepPartial} from '../../utils/Types';
 
 export class SoundsOptions {
   enabled = false;
+  showDebugInfo = false;
 
   backendConfig = {
     activeBackend: 'mediapipe',

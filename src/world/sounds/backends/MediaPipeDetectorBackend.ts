@@ -91,7 +91,10 @@ export class MediaPipeDetectorBackend extends BaseDetectorBackend {
         chunk,
         this.context.sampleRate
       );
-      const debugData = this.populateDebugData({data: chunk});
+
+      const debugData = this.context.options.sounds.showDebugInfo
+        ? this.populateDebugData({data: chunk})
+        : undefined;
 
       return {
         items: mediaPipeResult,
