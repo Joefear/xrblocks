@@ -41,9 +41,9 @@ export class UnderwaterImmersive extends THREE.Object3D {
         this._entryMatrix
       );
       const portalQuatInv = portalQuat.clone().invert();
-      const camQuat = camera.getWorldQuaternion(new THREE.Quaternion());
-      const localQuat = portalQuatInv.multiply(camQuat);
-      const rotMat4 = new THREE.Matrix4().makeRotationFromQuaternion(localQuat);
+      const rotMat4 = new THREE.Matrix4().makeRotationFromQuaternion(
+        portalQuatInv
+      );
       mat.uniforms.uViewRotation.value.setFromMatrix4(rotMat4);
     }
 
