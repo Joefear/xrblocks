@@ -180,20 +180,23 @@ export class ForestImmersive extends THREE.Object3D {
 
         // Test ray against one tree at world xz = pos. Returns hit t (or -1)
         // and writes hit type via outId: 1=trunk, 2=canopy.
-        float rayTree(vec3 ro, vec3 rd, vec2 pos, float scale, out int outId) {
+        float rayTree(vec3 ro, vec3 rd, vec2 pos, float scale,
+                      vec2 lean, float sway, out int outId) {
           outId = 0;
           float best = 1e9;
-          // Trunk from ground up to canopy base.
           float trunkTopY = GROUND_Y + 1.4 * scale;
           float trunkR = 0.10 * scale;
           float t = rayCylinder(ro, rd, pos, trunkR, GROUND_Y, trunkTopY);
           if (t > 0.0 && t < best) { best = t; outId = 1; }
-          // Canopy: 4 stacked spheres, broad at base, narrow at top (pine).
           for (int k = 0; k < 4; k++) {
             float fk = float(k);
             float cy = trunkTopY + (0.4 + fk * 0.55) * scale;
-            float cr = (0.95 - fk * 0.18) * scale;
-            float ts = raySphere(ro, rd, vec3(pos.x, cy, pos.y), cr);
+            float rVar = 0.85 + 0.3 * hash(vec2(pos.x * 7.3 + fk, pos.y * 3.1));
+            float cr = (0.95 - fk * 0.18) * scale * rVar;
+            float hFrac = (fk + 1.0) / 4.0;
+            vec2 off = lean * hFrac + vec2(sway) * hFrac;
+            float ts = raySphere(ro, rd,
+              vec3(pos.x + off.x, cy, pos.y + off.y), cr);
             if (ts > 0.0 && ts < best) { best = ts; outId = 2; }
           }
           return (best < 1e9) ? best : -1.0;
@@ -214,8 +217,12 @@ export class ForestImmersive extends THREE.Object3D {
                 : mix(8.0, 13.0, hash(vec2(fi, 5.1)));
             vec2 pos = vec2(cos(ang), sin(ang)) * radius;
             float scale = 1.6 + hash(vec2(fi, 9.7)) * 1.4;
+            float lAng = hash(vec2(fi, 13.1)) * 6.28318;
+            float lAmt = (hash(vec2(fi, 17.3)) - 0.3) * 0.4 * scale;
+            vec2 lean = vec2(cos(lAng), sin(lAng)) * lAmt;
+            float sway = sin(uTime * 0.5 + hash(vec2(fi, 21.7)) * 6.28) * 0.12;
             int id;
-            float t = rayTree(ro, rd, pos, scale, id);
+            float t = rayTree(ro, rd, pos, scale, lean, sway, id);
             if (t > 0.0 && t < bestT) {
               bestT = t; bestId = id; bestPos = pos; bestScale = scale;
             }
@@ -237,7 +244,9 @@ export class ForestImmersive extends THREE.Object3D {
             float needles = fbm(hp.xz * 6.0 + hp.y * 3.0);
             vec3 base = mix(vec3(0.025, 0.050, 0.028),
                             vec3(0.055, 0.100, 0.050), needles);
-            col = base * (0.45 + topLight * 0.7);
+            float breathe = 0.92 + 0.08 * sin(uTime * 0.6
+              + bestPos.x * 1.3 + bestPos.y * 0.9);
+            col = base * (0.45 + topLight * 0.7) * breathe;
           }
           float fog = smoothstep(3.0, 16.0, bestT);
           col = mix(col, vec3(0.10, 0.08, 0.18), fog * 0.6);
@@ -337,6 +346,20 @@ export class ForestImmersive extends THREE.Object3D {
                 float gn = fbm(gp.xz * 0.4);
                 vec3 ground = mix(vec3(0.03, 0.04, 0.02),
                                   vec3(0.08, 0.07, 0.04), gn);
+                // Creek — winding stream on the forest floor
+                float creekPath = sin(gp.z * 0.7 + 1.5) * 1.8
+                                + sin(gp.z * 0.3) * 2.5;
+                float creekDist = abs(gp.x - creekPath);
+                float creekW = 0.35 + 0.1 * sin(gp.z * 1.2);
+                float creek = smoothstep(creekW, creekW * 0.4, creekDist);
+                if (creek > 0.01) {
+                  vec2 flowUV = gp.xz + vec2(0.0, uTime * 0.2);
+                  float ripple = fbm(flowUV * 4.0);
+                  vec3 water = mix(vec3(0.03, 0.05, 0.12),
+                                   vec3(0.06, 0.10, 0.20), ripple);
+                  water += vec3(0.04, 0.03, 0.08) * ripple;
+                  ground = mix(ground, water, creek);
+                }
                 float fog = smoothstep(0.0, 25.0, t);
                 col = mix(ground, col, fog * 0.7);
               }
@@ -349,6 +372,36 @@ export class ForestImmersive extends THREE.Object3D {
           if (forest.a > 0.0) {
             if (groundT < 0.0 || forest.a < groundT) {
               col = forest.rgb;
+            }
+          }
+
+          // Moonbeams — soft volumetric light shafts through canopy gaps
+          {
+            vec3 mLD = normalize(vec3(-0.45, -0.75, 0.55));
+            for (int b = 0; b < 3; b++) {
+              float fb = float(b);
+              vec3 bO = vec3(sin(fb * 2.4 + 0.8) * 3.5,
+                             GROUND_Y + 5.5,
+                             cos(fb * 2.4 + 0.8) * 3.0);
+              vec3 w = ro - bO;
+              float dd = dot(rd, mLD);
+              float den = 1.0 - dd * dd;
+              if (den > 0.001) {
+                float sC = (dd * dot(w, mLD) - dot(w, rd)) / den;
+                float tC = (dot(w, mLD) - dd * dot(w, rd)) / den;
+                if (sC > 0.5 && tC > 0.0) {
+                  vec3 pR = ro + rd * sC;
+                  vec3 pB = bO + mLD * tC;
+                  float dist = length(pR - pB);
+                  float beam = smoothstep(0.6, 0.0, dist) * 0.12;
+                  beam *= smoothstep(0.0, 1.5, tC) * smoothstep(8.0, 5.0, tC);
+                  beam *= smoothstep(GROUND_Y, GROUND_Y + 0.5, pR.y)
+                        * smoothstep(GROUND_Y + 5.0, GROUND_Y + 2.0, pR.y);
+                  beam *= smoothstep(20.0, 2.0, sC);
+                  if (forest.a > 0.0 && sC > forest.a) beam *= 0.2;
+                  col += vec3(0.50, 0.55, 0.75) * beam;
+                }
+              }
             }
           }
 
