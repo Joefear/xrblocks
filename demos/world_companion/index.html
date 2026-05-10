@@ -517,8 +517,8 @@
 
       const xrPanel = new xb.SpatialPanel({
         width: 0.3,
-        height: 0.11,
-        backgroundColor: '#00000000',
+        height: 0.12,
+        backgroundColor: '#000000d9',
         showEdge: false,
       });
       xrPanel.position.set(0, 1.2, -1.2);
@@ -527,8 +527,6 @@
       const xrGrid = xrPanel.addGrid();
       const statusRow = xrGrid.addRow({weight: 0.3});
       const ctrlRow = xrGrid.addRow({weight: 0.7});
-      const ctrlPanel = ctrlRow.addPanel({backgroundColor: '#000000D9'});
-      const ctrlGrid = ctrlPanel.addGrid();
 
       xrStatusText = statusRow.addText({
         text: 'idle',
@@ -537,29 +535,26 @@
         textAlign: 'center',
       });
 
-      const xrStartBtn = ctrlGrid.addCol({weight: 1}).addIconButton({
+      const xrStartBtn = ctrlRow.addCol({weight: 1}).addIconButton({
         text: 'mic',
-        fontSize: 0.7,
+        fontSize: 0.6,
         fontColor: '#ffffff',
       });
       xrStartBtn.onTriggered = start;
 
-      const xrStopBtn = ctrlGrid.addCol({weight: 1}).addIconButton({
+      const xrStopBtn = ctrlRow.addCol({weight: 1}).addIconButton({
         text: 'stop',
-        fontSize: 0.7,
+        fontSize: 0.6,
         fontColor: '#ffffff',
       });
       xrStopBtn.onTriggered = stop;
 
-      const xrClearBtn = ctrlGrid.addCol({weight: 1}).addIconButton({
+      const xrClearBtn = ctrlRow.addCol({weight: 1}).addIconButton({
         text: 'delete_sweep',
-        fontSize: 0.6,
+        fontSize: 0.5,
         fontColor: '#ffffff',
       });
       xrClearBtn.onTriggered = clearLabels;
-
-      const orbiter = ctrlGrid.addOrbiter();
-      orbiter.addExitButton();
 
       xrPanel.updateLayouts();
     </script>
