@@ -503,6 +503,10 @@
       options.enableAI();
       options.enableCamera();
       options.enableDepth();
+      options.depth.depthMesh.updateFullResolutionGeometry = true;
+      options.depth.depthMesh.renderShadow = true;
+      options.depth.depthTexture.enabled = false;
+      options.depth.matchDepthView = false;
       options.enableObjectDetection();
       options.world.objects.backendConfig.activeBackend = 'gemini';
       options.reticles.enabled = true;
