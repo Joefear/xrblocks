@@ -359,6 +359,7 @@
                 free.find((d) =>
                   needle.includes(d.label?.toLowerCase() || '\0')
                 ) ||
+                free[0] ||
                 null
               );
             };
