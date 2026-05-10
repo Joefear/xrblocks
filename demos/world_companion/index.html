@@ -325,6 +325,22 @@
               return {success: false, error: 'no items provided'};
             }
 
+            const callKey = list
+              .map((it) => (it.text || '').toLowerCase().trim())
+              .sort()
+              .join('|');
+            const now = performance.now();
+            if (
+              placeLabel._lastKey === callKey &&
+              now - (placeLabel._lastAt || 0) < 2000
+            ) {
+              console.log('[placeLabel] debounced retry', callKey);
+              return placeLabel._lastResult ||
+                {success: true, data: {placed: [], detected: []}};
+            }
+            placeLabel._lastKey = callKey;
+            placeLabel._lastAt = now;
+
             const fallbackPosition = (i) => {
               const cam = xb.core.camera;
               const offset = new THREE.Vector3(
@@ -403,13 +419,15 @@
                 });
               }
             });
-            return {
+            const result = {
               success: true,
               data: {
                 placed,
                 detected: detected.map((d) => d.label),
               },
             };
+            placeLabel._lastResult = result;
+            return result;
           },
         });
 
