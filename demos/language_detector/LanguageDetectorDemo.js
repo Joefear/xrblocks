@@ -9,7 +9,7 @@ import {GeminiLiveSource} from './SpeechSources.js';
 
 const PLACEHOLDER =
   'Pinch the mic and say something in any language.\nEach utterance is detected separately.';
-const MAX_UTTERANCES = 8;
+const MAX_UTTERANCES = 12;
 
 export class LanguageDetectorDemo extends xb.Script {
   static dependencies = {camera: THREE.Camera};
@@ -51,15 +51,14 @@ export class LanguageDetectorDemo extends xb.Script {
       fontSize: 0.038,
     });
 
-    // Utterance list (scrollable).
+    // Utterance list — flat TextView (no auto-scroll), capped at MAX_UTTERANCES.
     const listRow = grid.addRow({weight: 0.66});
-    this.listView = new xb.ScrollingTroikaTextView({
+    this.listView = listRow.addText({
       text: PLACEHOLDER,
-      fontSize: 0.044,
+      fontSize: 0.034,
       textAlign: 'left',
       fontColor: '#e7eaf2',
     });
-    listRow.add(this.listView);
 
     // Controls row.
     const controlRow = grid.addRow({weight: 0.17});
@@ -183,18 +182,17 @@ export class LanguageDetectorDemo extends xb.Script {
       this.listView.setText(PLACEHOLDER);
       return;
     }
-    const lines = this.utterances.map(
-      (u) => `${u.code.padEnd(3)} ${u.name}  ${Math.round(u.prob * 100)}%
-    ${u.text}`
-    );
+    const fmt = (u, text) =>
+      `[${u.code}] ${u.name} ${Math.round(u.prob * 100)}%  ${text}`;
+    const lines = this.utterances.map((u) => fmt(u, u.text));
     if (this.interim) {
       const live = this.interimLang;
-      const label = live
-        ? `${live.code.padEnd(3)} ${live.name}  ${Math.round(live.prob * 100)}%`
-        : '···  detecting…';
-      lines.push(`${label}
-    ${this.interim}`);
+      lines.push(
+        live
+          ? fmt(live, this.interim) + '  …'
+          : `[..] detecting…  ${this.interim}`
+      );
     }
-    this.listView.setText(lines.join('\n\n'));
+    this.listView.setText(lines.join('\n'));
   }
 }
