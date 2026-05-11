@@ -113,7 +113,13 @@ export class Simulator extends Script {
     const deviceCamera = registry.get(XRDeviceCamera);
     this.options = simulatorOptions;
     camera.position.copy(this.options.initialCameraPosition);
-    this.userInterface.init(simulatorOptions, this.controls, this.hands, input);
+    this.userInterface.init(
+      simulatorOptions,
+      this.controls,
+      this.hands,
+      input,
+      this.simulatorScene
+    );
     renderer.autoClearColor = false;
     await this.simulatorScene.init(simulatorOptions);
     await this.simulatorWorld.init(options, world);
@@ -140,20 +146,22 @@ export class Simulator extends Script {
       this.setupStereoCameras(camera);
     }
 
-    if (this.options.videoPath) {
+    const activeEnv =
+      this.options.environments[this.options.activeEnvironmentIndex];
+    if (activeEnv?.videoPath) {
       this.videoElement = document.createElement('video');
-      this.videoElement.src = this.options.videoPath;
+      this.videoElement.src = activeEnv.videoPath;
       this.videoElement.loop = true;
       this.videoElement.muted = true;
       this.videoElement.play().catch((e) => {
         console.error(
-          `Simulator: Failed to play video at ${this.options.videoPath}`,
+          `Simulator: Failed to play video at ${activeEnv.videoPath}`,
           e
         );
       });
       this.videoElement.addEventListener('error', () => {
         console.error(
-          `Simulator: Error loading video at ${this.options.videoPath}`,
+          `Simulator: Error loading video at ${activeEnv.videoPath}`,
           this.videoElement?.error
         );
       });

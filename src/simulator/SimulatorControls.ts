@@ -14,21 +14,18 @@ import {SimulatorControllerState} from './SimulatorControllerState';
 import {SimulatorHands} from './SimulatorHands';
 import {SimulatorInterface} from './SimulatorInterface';
 import {SimulatorMode, SimulatorOptions} from './SimulatorOptions';
+import {ISimulatorSettingsPanelElement} from './interfaces/ISimulatorSettingsPanelElement';
 
 function preventDefault(event: Event) {
   event.preventDefault();
 }
 
-export type SimulatorModeIndicatorElement = HTMLElement & {
-  simulatorMode: SimulatorMode;
-};
-
 export class SimulatorControls {
   pointerDown = false;
   downKeys = new Set<Keycodes>();
 
-  // Custom HTML element indicating the simulator control mode.
-  modeIndicatorElement?: SimulatorModeIndicatorElement;
+  // Custom HTML element for simulator settings.
+  simulatorSettingsPanelElement?: ISimulatorSettingsPanelElement;
 
   simulatorMode = SimulatorMode.USER;
 
@@ -200,19 +197,19 @@ export class SimulatorControls {
     this.simulatorModeControls.onModeDeactivated();
     this.simulatorModeControls = this.simulatorModes[this.simulatorMode];
     this.simulatorModeControls.onModeActivated();
-    if (this.modeIndicatorElement) {
-      this.modeIndicatorElement.simulatorMode = mode;
+    if (this.simulatorSettingsPanelElement) {
+      this.simulatorSettingsPanelElement.simulatorMode = mode;
     }
   }
 
-  setModeIndicatorElement(element: SimulatorModeIndicatorElement) {
+  setSimulatorSettingsPanelElement(element: ISimulatorSettingsPanelElement) {
     element.simulatorMode = this.simulatorMode;
     element.addEventListener('setSimulatorMode', (event) => {
       if (event instanceof SetSimulatorModeEvent) {
         this.setSimulatorMode(event.simulatorMode);
       }
     });
-    this.modeIndicatorElement = element;
+    this.simulatorSettingsPanelElement = element;
   }
 
   setEnabled(value: boolean) {
