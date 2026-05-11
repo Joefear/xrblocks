@@ -1,14 +1,15 @@
+import * as THREE from 'three';
 import {GamepadController} from '../input/GamepadController.js';
 import {Input} from '../input/Input.js';
-import {
-  SimulatorControls,
-  SimulatorModeIndicatorElement,
-} from './SimulatorControls.js';
+import {SimulatorControls} from './SimulatorControls.js';
+import {ISimulatorSettingsPanelElement} from './interfaces/ISimulatorSettingsPanelElement.js';
 import {SimulatorHands} from './SimulatorHands.js';
 import {
   SimulatorCustomInstruction,
   SimulatorOptions,
 } from './SimulatorOptions.js';
+import {SimulatorScene} from './SimulatorScene.js';
+import {SetSimulatorEnvironmentEvent} from './events/SimulatorEnvironmentEvents.js';
 
 /** Minimal interface for the gamepad toast element. */
 interface GamepadToastElement extends HTMLElement {
@@ -66,9 +67,16 @@ export class SimulatorInterface {
     simulatorOptions: SimulatorOptions,
     simulatorControls: SimulatorControls,
     simulatorHands: SimulatorHands,
-    input?: Input
+    input?: Input,
+    simulatorScene?: SimulatorScene
   ) {
-    this.createModeIndicator(simulatorOptions, simulatorControls);
+    if (simulatorScene) {
+      this.createSimulatorSettingsPanel(
+        simulatorOptions,
+        simulatorControls,
+        simulatorScene
+      );
+    }
     this.showGeminiLivePanel(simulatorOptions);
     this.createHandPosePanel(simulatorOptions, simulatorHands);
     simulatorHands.onHandednessChanged = (handedness) => {
@@ -80,17 +88,39 @@ export class SimulatorInterface {
     if (input) this._initGamepadUI(input);
   }
 
-  createModeIndicator(
+  createSimulatorSettingsPanel(
     simulatorOptions: SimulatorOptions,
-    simulatorControls: SimulatorControls
+    simulatorControls: SimulatorControls,
+    simulatorScene: SimulatorScene
   ) {
-    if (simulatorOptions.modeIndicator.enabled) {
-      const modeIndicatorElement = document.createElement(
-        simulatorOptions.modeIndicator.element
-      ) as SimulatorModeIndicatorElement;
-      document.body.appendChild(modeIndicatorElement);
-      simulatorControls.setModeIndicatorElement(modeIndicatorElement);
-      this.elements.push(modeIndicatorElement);
+    if (simulatorOptions.simulatorSettingsPanel.enabled) {
+      const settingsElement = document.createElement(
+        simulatorOptions.simulatorSettingsPanel.element
+      ) as ISimulatorSettingsPanelElement;
+      settingsElement.environments = simulatorOptions.environments;
+      settingsElement.activeEnvironmentIndex =
+        simulatorOptions.activeEnvironmentIndex;
+      document.body.appendChild(settingsElement);
+      simulatorControls.setSimulatorSettingsPanelElement(settingsElement);
+      settingsElement.addEventListener(
+        SetSimulatorEnvironmentEvent.type,
+        (event: Event) => {
+          if (event instanceof SetSimulatorEnvironmentEvent) {
+            simulatorOptions.activeEnvironmentIndex = event.environmentIndex;
+            const activeEnv =
+              simulatorOptions.environments[event.environmentIndex];
+            simulatorScene.setEnvironment(
+              activeEnv?.scenePath ?? null,
+              new THREE.Vector3(
+                simulatorOptions.initialScenePosition.x,
+                simulatorOptions.initialScenePosition.y,
+                simulatorOptions.initialScenePosition.z
+              )
+            );
+          }
+        }
+      );
+      this.elements.push(settingsElement);
     }
   }
 
