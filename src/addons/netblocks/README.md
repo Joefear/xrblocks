@@ -1,0 +1,223 @@
+# netblocks
+
+> Multiplayer XR for [xrblocks](https://github.com/google/xrblocks).
+
+`netblocks` is a batteries-included addon that turns any xrblocks app into a
+shared, real-time XR experience. It gives you:
+
+- 👥 **Presence** — see other users' heads and hands as live avatars.
+- 📦 **Shared objects** — `NetObject` syncs `position`/`quaternion`/`scale`
+  with cooperative ownership (claim on grab, release on drop).
+- 📨 **Typed events** — `session.events.emit('chat', payload)` style RPC.
+- 🎙️ **Spatial voice** — opt-in WebRTC audio that pans with each peer's head.
+- 🔌 **Pluggable transports** — pick the right one for your environment:
+  - `BroadcastChannelTransport` — zero-config, two browser tabs see each
+    other instantly. Perfect for local dev.
+  - `WebRTCTransport` — peer-to-peer over the public PeerJS broker (or
+    your own); no backend, low latency, ≤ ~6 peers.
+  - `WebSocketTransport` — connect to a tiny relay (`server/relay.js`)
+    for reliable, scalable multi-user rooms.
+
+The whole system is one mental model: **a `Transport` moves opaque bytes
+between peers; a `NetSession` layers presence, RPC, replicated objects, and
+voice on top.** Swap transports without changing app code.
+
+---
+
+## Quick start
+
+```ts
+import * as xb from 'xrblocks';
+import {
+  NetCore,
+  BroadcastChannelTransport,
+} from 'xrblocks/addons/netblocks/src';
+
+class MyApp extends xb.Script {
+  net = new NetCore(this);
+
+  async init() {
+    const session = await this.net.joinRoom('my-room', {
+      transport: new BroadcastChannelTransport(),
+      displayName: 'Alice',
+    });
+
+    session.events.on('chat', (text, fromPeerId) => {
+      console.log(`${fromPeerId}: ${text}`);
+    });
+  }
+
+  update(time, frame) {
+    this.net.update(time, frame);
+  }
+}
+
+xb.add(new MyApp());
+xb.init();
+```
+
+Open the same page in two browser tabs and you'll instantly see the other
+tab's head and hands rendered as a colored ball-and-stick avatar.
+
+---
+
+## Concepts
+
+### NetCore
+
+The single facade you instantiate per app. Holds the active `NetSession`
+and exposes `joinRoom`, `leaveRoom`, and `update`.
+
+### NetSession
+
+The brain. Owns the transport, dispatches inbound messages to subsystems,
+and broadcasts outbound presence + object updates each frame. You'll
+mostly interact with `session.events`, `session.users`, and
+`session.createNetObject()`.
+
+### NetUser
+
+Per-peer state — `peerId`, `displayName`, `avatar` (a
+`RemoteUserAvatar` `THREE.Group`), and `lastSeenMs`. Iterate via
+`session.users`.
+
+### Transport
+
+A `Transport` is just **send bytes** + **peer-join/leave/message events**.
+Implement your own (e.g., to plug into a Liveblocks room or a Unity bridge)
+by extending the `Transport` base class.
+
+### NetObject
+
+A `THREE.Group` whose transform is replicated on a fixed cadence (default
+20 Hz). Owners broadcast; non-owners interpolate. Ownership is cooperative
+— call `session.claim(obj)` on grab and `session.release(obj)` on drop.
+
+### NetEvents
+
+A typed pub/sub bus over the wire. `events.on(topic, handler)`,
+`events.emit(topic, payload)`, `events.emitTo(peerId, topic, payload)`.
+Use this for chat, button presses, emoji bursts, cursor pings — anything
+that isn't a recurring transform.
+
+### VoiceChat + SpatialVoice
+
+WebRTC audio that piggybacks on the data plane for signaling. Audio is
+parented to each peer's `headPivot` via `THREE.PositionalAudio` so it
+spatializes naturally. Enable via `{voice: true}` in `joinRoom()` or
+`session.voice.enable(...)` later.
+
+---
+
+## Transports in detail
+
+### BroadcastChannelTransport
+
+Same-origin, same-machine, zero infrastructure. Perfect for local
+development and for QA-ing UX without juggling two devices.
+
+```ts
+new BroadcastChannelTransport();
+```
+
+### WebRTCTransport
+
+Peer-to-peer using the public PeerJS broker for signaling. Audio and data
+flow directly between browsers, so latency is excellent. Limitations:
+
+- The public broker is best-effort — supply `signalingUrl` for production.
+- Without TURN, NAT traversal can fail across some networks. Pass
+  `iceServers` to add TURN.
+- Full mesh — best for ≤ 6 participants.
+
+```ts
+new WebRTCTransport({
+  iceServers: [
+    {urls: 'stun:stun.l.google.com:19302'},
+    // {urls: 'turn:turn.example.com:3478', username: 'u', credential: 'p'},
+  ],
+});
+```
+
+### WebSocketTransport
+
+Connects to a small relay server included in the addon
+(`server/relay.js`). Run it with:
+
+```sh
+npm i ws
+node node_modules/xrblocks/build/addons/netblocks/server/relay.js
+# or, in this repo: node src/addons/netblocks/server/relay.js
+```
+
+Then point the client at it:
+
+```ts
+new WebSocketTransport({url: 'ws://localhost:8765'});
+```
+
+The relay is dumb fan-out — under 200 LOC, no auth, no persistence. For
+production, add auth in front (e.g., reverse-proxy with an ID token check)
+and consider adding rate-limiting.
+
+---
+
+## Wire protocol
+
+All messages are JSON envelopes carrying a tagged union:
+
+| `type`              | Direction     | Purpose                                            |
+| ------------------- | ------------- | -------------------------------------------------- |
+| `hello`             | broadcast     | Announce capabilities + display name on join.      |
+| `welcome`           | unicast       | Bring a new peer up to speed on existing peers.    |
+| `bye`               | broadcast     | Graceful leave.                                    |
+| `pose`              | broadcast     | Compact binary head + hands snapshot (base64).     |
+| `netobject`         | broadcast     | Replicated transform + optional state for one obj. |
+| `netobject.claim`   | broadcast     | Request ownership of a NetObject.                  |
+| `netobject.release` | broadcast     | Drop ownership of a NetObject.                     |
+| `rpc`               | uni/broadcast | Typed pub/sub event.                               |
+| `voice`             | unicast       | WebRTC SDP/ICE for spatial voice negotiation.      |
+| `ping` / `pong`     | reserved      | Keepalive (currently unused).                      |
+
+Pose snapshots are encoded as a fixed 358-byte binary blob (head pose +
+two hands × 25 quantized joints) wrapped in base64 inside the JSON
+envelope. See `src/core/codec/PoseCodec.ts` for the byte layout.
+
+---
+
+## Samples
+
+See [`samples/SAMPLES.md`](./samples/SAMPLES.md). Highlights:
+
+- `samples/basic/presence` — see remote heads + hands.
+- `samples/basic/objects` — drag a shared cube; ownership transfers on grab.
+- `samples/basic/events` — broadcast emoji bursts via the RPC bus.
+- `samples/basic/voice` — push-to-talk spatial voice chat.
+- `samples/basic/transports` — switch transports at runtime.
+- `samples/netblocks/index.html` — assembled "shared room" demo combining
+  presence + objects + chat + voice.
+
+---
+
+## Design choices and trade-offs
+
+- **Cooperative ownership over server authority.** netblocks does not assume
+  a backend — most setups use peer-to-peer or a dumb relay. We resolve
+  conflicts by preferring the lower peer id on race, which is good enough
+  for pickup-and-throw semantics. For competitive/anti-cheat workloads,
+  add a server-authoritative arbiter on top of the same protocol.
+- **JSON envelopes, binary pose payloads.** JSON keeps the protocol
+  introspectable (open dev-tools and read traffic) without sacrificing
+  pose bandwidth — pose is the only frame we send at frame-rate, so we
+  spend the complexity budget there.
+- **Fixed 20 Hz pose / object updates.** Tunable, but defaults work for
+  every browser/device combination we tested. Avatars use lerp/slerp
+  smoothing so 20 Hz looks like 60 Hz.
+- **No CRDT.** Shared documents are out of scope. If you need them, layer
+  Yjs or Automerge on top of `session.events.emit('crdt-update', ...)`.
+
+---
+
+## License
+
+Apache-2.0 — same as xrblocks.

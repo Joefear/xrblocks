@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>netblocks Integration Sample | XR Blocks</title>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <link type="text/css" rel="stylesheet" href="../main.css" />
+    <style>
+      #netblocks-hud {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        max-width: 300px;
+        padding: 14px 16px;
+        background: rgba(20, 20, 30, 0.85);
+        color: #eee;
+        font-family: sans-serif;
+        font-size: 13px;
+        border-radius: 12px;
+        z-index: 999;
+      }
+      #netblocks-hud h2 {
+        margin: 0 0 6px;
+        color: #9177c7;
+        font-size: 15px;
+      }
+      #netblocks-hud .row {
+        margin-top: 8px;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      #netblocks-hud button {
+        padding: 6px 10px;
+        background: #9177c7;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      #netblocks-hud input {
+        flex: 1;
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 1px solid #444;
+        background: #1a1a26;
+        color: #eee;
+      }
+      #peers li {
+        list-style: none;
+        margin: 2px 0;
+      }
+      #peers .dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+          "three/": "https://cdn.jsdelivr.net/npm/three@0.182.0/",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/",
+          "troika-three-text": "https://cdn.jsdelivr.net/gh/protectwise/troika@028b81cf308f0f22e5aa8e78196be56ec1997af5/packages/troika-three-text/src/index.js",
+          "troika-three-utils": "https://cdn.jsdelivr.net/gh/protectwise/troika@v0.52.4/packages/troika-three-utils/src/index.js",
+          "troika-worker-utils": "https://cdn.jsdelivr.net/gh/protectwise/troika@v0.52.4/packages/troika-worker-utils/src/index.js",
+          "bidi-js": "https://esm.sh/bidi-js@%5E1.0.2?target=es2022",
+          "webgl-sdf-generator": "https://esm.sh/webgl-sdf-generator@1.1.1/es2022/webgl-sdf-generator.mjs",
+          "lit": "https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js",
+          "lit/": "https://esm.run/lit@3/",
+          "@pmndrs/uikit": "https://cdn.jsdelivr.net/npm/@pmndrs/uikit@1.0.56/dist/index.min.js",
+          "@pmndrs/uikit-pub-sub": "https://cdn.jsdelivr.net/npm/@pmndrs/uikit-pub-sub@1.0.56/dist/index.min.js",
+          "@pmndrs/msdfonts": "https://cdn.jsdelivr.net/npm/@pmndrs/msdfonts@1.0.56/dist/index.min.js",
+          "@preact/signals-core": "https://cdn.jsdelivr.net/npm/@preact/signals-core@1.12.1/dist/signals-core.mjs",
+          "yoga-layout/load": "https://cdn.jsdelivr.net/npm/yoga-layout@3.2.1/dist/src/load.js",
+          "netblocks": "../../build/addons/netblocks/src/index.js",
+          "xrblocks": "../../build/xrblocks.js"
+        }
+      }
+    </script>
+  </head>
+
+  <body>
+    <div id="netblocks-hud">
+      <h2>🌐 Shared Room</h2>
+      <div>
+        Open this page in another tab (or share it with a friend) to play with
+        shared cubes, send chat, and turn on spatial voice.
+      </div>
+      <ul id="peers"></ul>
+      <div class="row">
+        <button id="voice-toggle">🎙️ Enable voice</button>
+      </div>
+      <div class="row">
+        <input id="chat-input" type="text" placeholder="Send chat…" />
+        <button id="chat-send">Send</button>
+      </div>
+      <div
+        id="chat-log"
+        style="margin-top: 8px; max-height: 120px; overflow-y: auto"
+      ></div>
+    </div>
+
+    <script type="module">
+      import * as THREE from 'three';
+      import * as xb from 'xrblocks';
+      import {
+        BroadcastChannelTransport,
+        NetCore,
+        WebRTCTransport,
+      } from 'netblocks';
+
+      class SharedRoom extends xb.Script {
+        constructor() {
+          super();
+          this.net = new NetCore(this);
+          this.cubes = [];
+          this.grab = null;
+        }
+
+        async init() {
+          // Lighting + ground
+          this.add(new THREE.HemisphereLight(0xffffff, 0x202030, 1.0));
+          const floor = new THREE.Mesh(
+            new THREE.CircleGeometry(3, 64),
+            new THREE.MeshStandardMaterial({color: 0x303040, roughness: 0.9})
+          );
+          floor.rotation.x = -Math.PI / 2;
+          this.add(floor);
+
+          // Connect over WebRTC so voice works (BroadcastChannel for chat-only).
+          const session = await this.net.joinRoom('xrblocks-shared-room', {
+            transport: new WebRTCTransport(),
+            displayName:
+              localStorage.getItem('netblocks-name') ??
+              `User-${Math.floor(Math.random() * 1000)}`,
+          });
+          this._session = session;
+
+          // Spawn three deterministic cubes — every peer sees the same set.
+          for (let i = 0; i < 3; i++) {
+            const obj = session.createNetObject({id: `cube-${i}`});
+            obj.position.set((i - 1) * 0.4, 1.2, -1);
+            const mesh = new THREE.Mesh(
+              new THREE.BoxGeometry(0.18, 0.18, 0.18),
+              new THREE.MeshStandardMaterial({
+                color: new THREE.Color().setHSL(i / 3, 0.6, 0.5),
+                roughness: 0.3,
+              })
+            );
+            obj.add(mesh);
+            this.cubes.push(obj);
+          }
+
+          // Pointer-driven grab/release.
+          for (const c of xb.core.input.controllers ?? []) {
+            c.addEventListener('selectstart', () => this._tryGrab(c));
+            c.addEventListener('selectend', () => this._tryRelease());
+          }
+
+          // RPC chat.
+          session.events.on('chat', (text, from) =>
+            this._appendChat(from, text)
+          );
+
+          // HUD wiring.
+          this._renderPeers();
+          session.addEventListener('user-join', () => this._renderPeers());
+          session.addEventListener('user-leave', () => this._renderPeers());
+
+          document.getElementById('chat-send').addEventListener('click', () => {
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text) return;
+            session.events.emit('chat', text);
+            this._appendChat(session.localPeerId + ' (you)', text);
+            input.value = '';
+          });
+          document
+            .getElementById('chat-input')
+            .addEventListener('keydown', (e) => {
+              if (e.key === 'Enter')
+                document.getElementById('chat-send').click();
+            });
+          document
+            .getElementById('voice-toggle')
+            .addEventListener('click', async () => {
+              const btn = document.getElementById('voice-toggle');
+              if (session.voice.isEnabled()) {
+                session.voice.disable();
+                btn.textContent = '🎙️ Enable voice';
+              } else {
+                try {
+                  await session.voice.enable(session.transport.remotePeerIds);
+                  btn.textContent = '🔇 Disable voice';
+                } catch (err) {
+                  alert('Voice failed: ' + err.message);
+                }
+              }
+            });
+        }
+
+        update(time, frame) {
+          this.net.update(time, frame);
+          if (this.grab) {
+            const cw = new THREE.Vector3();
+            this.grab.controller.getWorldPosition(cw);
+            this.grab.cube.position.copy(cw).add(this.grab.offset);
+          }
+        }
+
+        _tryGrab(controller) {
+          const cw = new THREE.Vector3();
+          controller.getWorldPosition(cw);
+          let closest = null;
+          let bestDist = 0.5;
+          for (const cube of this.cubes) {
+            const p = new THREE.Vector3();
+            cube.getWorldPosition(p);
+            const d = p.distanceTo(cw);
+            if (d < bestDist) {
+              bestDist = d;
+              closest = cube;
+            }
+          }
+          if (!closest) return;
+          this._session.claim(closest);
+          const offset = new THREE.Vector3().copy(closest.position).sub(cw);
+          this.grab = {controller, cube: closest, offset};
+        }
+
+        _tryRelease() {
+          if (!this.grab) return;
+          this._session.release(this.grab.cube);
+          this.grab = null;
+        }
+
+        _renderPeers() {
+          const el = document.getElementById('peers');
+          el.innerHTML = '';
+          const me = document.createElement('li');
+          me.innerHTML = `<span class="dot" style="background:#9177c7"></span>${this._session.localPeerId.slice(0, 6)} (you)`;
+          el.appendChild(me);
+          for (const [, user] of this._session.users) {
+            const li = document.createElement('li');
+            const c = '#' + user.avatar.color.getHexString();
+            li.innerHTML = `<span class="dot" style="background:${c}"></span>${user.displayName ?? user.peerId.slice(0, 6)}`;
+            el.appendChild(li);
+          }
+        }
+
+        _appendChat(from, text) {
+          const log = document.getElementById('chat-log');
+          const row = document.createElement('div');
+          row.style.fontSize = '12px';
+          row.style.padding = '2px 0';
+          row.innerHTML = `<b>${String(from).slice(0, 6)}</b>: ${text.replace(/[<>&]/g, (c) => ({'<': '&lt;', '>': '&gt;', '&': '&amp;'})[c])}`;
+          log.appendChild(row);
+          log.scrollTop = log.scrollHeight;
+        }
+      }
+
+      const options = new xb.Options();
+      options.enableUI();
+      options.reticles.enabled = true;
+      options.controllers.visualizeRays = false;
+
+      xb.add(new SharedRoom());
+      xb.init(options);
+    </script>
+  </body>
+</html>
