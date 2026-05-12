@@ -259,6 +259,53 @@
       let transcriptBuffer = '';
       let xrStatusText = null;
 
+      const embedCache = new Map();
+      const SIM_THRESHOLD = 0.7;
+      function cosine(a, b) {
+        if (!a || !b || a.length !== b.length) return 0;
+        let dot = 0,
+          na = 0,
+          nb = 0;
+        for (let i = 0; i < a.length; i++) {
+          dot += a[i] * b[i];
+          na += a[i] * a[i];
+          nb += b[i] * b[i];
+        }
+        const denom = Math.sqrt(na) * Math.sqrt(nb);
+        return denom ? dot / denom : 0;
+      }
+      async function embed(text) {
+        const k = (text || '').toLowerCase().trim();
+        if (!k) return null;
+        if (embedCache.has(k)) {
+          const v = embedCache.get(k);
+          return v instanceof Promise ? await v : v;
+        }
+        const ai = xb.core.ai?.model?.ai;
+        if (!ai?.models?.embedContent) return null;
+        const promise = ai.models
+          .embedContent({model: 'gemini-embedding-001', contents: k})
+          .then((r) => {
+            const vec = r.embeddings?.[0]?.values || null;
+            if (vec) embedCache.set(k, vec);
+            else embedCache.delete(k);
+            return vec;
+          })
+          .catch(() => {
+            embedCache.delete(k);
+            return null;
+          });
+        embedCache.set(k, promise);
+        return await promise;
+      }
+      function simSync(a, b) {
+        const va = embedCache.get((a || '').toLowerCase().trim());
+        const vb = embedCache.get((b || '').toLowerCase().trim());
+        if (!va || !vb) return 0;
+        if (va instanceof Promise || vb instanceof Promise) return 0;
+        return cosine(va, vb);
+      }
+
       function setStatus(s) {
         statusEl.textContent = s;
         if (xrStatusText) xrStatusText.text = s;
@@ -371,6 +418,14 @@
             } catch (e) {
               console.warn('[placeLabel] detection threw', e);
             }
+
+            const embedTargets = new Set();
+            list.forEach((it) => it?.text && embedTargets.add(it.text));
+            detected.forEach((d) => d?.label && embedTargets.add(d.label));
+            labels.children.forEach(
+              (g) => g.userData.text && embedTargets.add(g.userData.text)
+            );
+            await Promise.all([...embedTargets].map((t) => embed(t)));
             if (xrStatusText) {
               const want = list.map((it) => it.text).join(',');
               const got = detected.map((d) => d.label).join(',') || '(none)';
@@ -446,15 +501,26 @@
                 if (exact) return exact;
               }
               const wantTokens = new Set(tokens(text));
-              if (wantTokens.size === 0) return null;
-              return (
-                free.find((d) => {
-                  for (const t of tokens(d.label)) {
-                    if (wantTokens.has(t)) return true;
-                  }
-                  return false;
-                }) || null
-              );
+              const tokenMatch =
+                wantTokens.size === 0
+                  ? null
+                  : free.find((d) => {
+                      for (const t of tokens(d.label)) {
+                        if (wantTokens.has(t)) return true;
+                      }
+                      return false;
+                    }) || null;
+              if (tokenMatch) return tokenMatch;
+              let best = null;
+              let bestSim = SIM_THRESHOLD;
+              for (const d of free) {
+                const s = simSync(text, d.label);
+                if (s > bestSim) {
+                  bestSim = s;
+                  best = d;
+                }
+              }
+              return best;
             };
             const MAX_ANCHOR_DIST = 8;
             const camForRange = xb.core.camera;
@@ -563,6 +629,16 @@
           }
           return false;
         });
+        if (!existing) {
+          let bestSim = SIM_THRESHOLD;
+          for (const g of candidates) {
+            const s = simSync(text, g.userData.text);
+            if (s > bestSim) {
+              bestSim = s;
+              existing = g;
+            }
+          }
+        }
         if (existing) {
           if (existing.userData.style !== style) {
             labels.remove(existing);
