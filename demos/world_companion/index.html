@@ -696,7 +696,10 @@
               'and conversational. Only call placeLabel when the user ' +
               'explicitly asks you to label, point to, or mark something — ' +
               'never proactively label things you happen to see. Use ' +
-              "lookCloser when the user asks about what they're pointing at.",
+              "lookCloser when the user asks about what they're pointing at. " +
+              'When you tell the user you are about to label, point to, or ' +
+              'mark something, you must call placeLabel in the same turn — ' +
+              'never promise to do it later or in a follow-up message.',
             {
               fps: 1,
               tools: makeTools(),
