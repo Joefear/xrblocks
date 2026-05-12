@@ -47,7 +47,7 @@
     "@rollup/plugin-replace": "^6.0.2",
     "@rollup/plugin-terser": "^1.0.0",
     "@rollup/plugin-typescript": "^12.1.4",
-    "@sparkjsdev/spark": "^0.1.10",
+    "@sparkjsdev/spark": "^2.0.0",
     "@types/dom-speech-recognition": "^0.0.7",
     "@types/node": "^25.0.8",
     "@types/three": "^0.182.0",
@@ -74,5 +74,10 @@
   },
   "peerDependencies": {
     "three": "^0.182.0"
+  },
+  "overrides": {
+    "@sparkjsdev/spark": {
+      "three": ">=0.180.0"
+    }
   }
 }

@@ -35,7 +35,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Spatial UI',
       collapsed: false,
-      items: ['samples/ModelViewer', 'samples/UI'],
+      items: ['samples/ModelViewer', 'samples/UI', 'samples/UIBlocks'],
     },
     {
       type: 'category',
@@ -74,6 +74,7 @@ const sidebars: SidebarsConfig = {
       label: 'Advanced Demos',
       collapsed: false,
       items: [
+        'samples/Portals',
         'samples/Ballpit',
         'samples/BalloonPop',
         'samples/Paint',
