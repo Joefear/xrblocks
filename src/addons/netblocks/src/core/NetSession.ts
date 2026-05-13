@@ -258,7 +258,11 @@ export class NetSession extends EventTarget {
             state: Object.keys(obj.state).length ? obj.state : undefined,
           });
         }
-      } else if (obj._hasTarget) {
+      } else if (obj.ownerId && obj._hasTarget) {
+        // Only interpolate when a remote peer owns the object. If no
+        // one owns it (post-release), leave the cube where the last
+        // owner put it — otherwise we'd drift back toward a stale
+        // target buffered from before the most recent claim.
         // ~12 Hz convergence per second of dt; we don't have dt here so use a
         // fixed fraction tuned for 60+ fps host applications.
         obj.stepInterpolation(0.2);
