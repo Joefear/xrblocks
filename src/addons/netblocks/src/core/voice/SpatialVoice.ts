@@ -26,8 +26,9 @@ export class SpatialVoice {
   private _primersByPeer = new Map<string, HTMLAudioElement>();
   private _opts: Required<SpatialVoiceOptions>;
 
-  constructor(listener: THREE.AudioListener, opts: SpatialVoiceOptions = {}) {
-    this.listener = listener;
+  constructor(camera: THREE.Camera, opts: SpatialVoiceOptions = {}) {
+    this.listener = new THREE.AudioListener();
+    camera.add(this.listener);
     this._opts = {
       refDistance: opts.refDistance ?? 0.5,
       rolloffFactor: opts.rolloffFactor ?? 2,

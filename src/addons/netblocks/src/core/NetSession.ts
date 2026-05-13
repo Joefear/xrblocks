@@ -167,13 +167,9 @@ export class NetSession extends EventTarget {
     this._isOpen = true;
     this.voice.setLocalPeerId(this.transport.localPeerId);
 
-    // Lazy-init spatial voice. Reuse CoreSound's shared THREE.AudioListener
-    // (already attached to the camera) so we don't end up with two listeners
-    // / two AudioContexts on the same camera.
-    const listener = xb.core?.sound?.listener;
-    if (listener && !this._spatialVoice) {
-      this._spatialVoice = new SpatialVoice(listener);
-    }
+    // Lazy-init spatial voice (needs a camera; safe to skip if none yet).
+    const cam = xb.core?.camera;
+    if (cam && !this._spatialVoice) this._spatialVoice = new SpatialVoice(cam);
 
     // Greet every peer already known.
     const hello: HelloMessage = {
@@ -519,8 +515,8 @@ export class NetSession extends EventTarget {
 
   private _onVoiceTrack(peerId: string, stream: MediaStream): void {
     if (!this._spatialVoice) {
-      const listener = xb.core?.sound?.listener;
-      if (listener) this._spatialVoice = new SpatialVoice(listener);
+      const cam = xb.core?.camera;
+      if (cam) this._spatialVoice = new SpatialVoice(cam);
     }
     const user = this._users.get(peerId);
     if (!this._spatialVoice || !user) return;
