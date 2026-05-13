@@ -87,6 +87,12 @@ export class NetSession extends EventTarget {
 
   private _root: THREE.Object3D;
   private _users = new Map<string, NetUser>();
+  /**
+   * Tracks users we created from a non-hello first message. We defer
+   * `user-join` until either their hello arrives (so the listener sees a
+   * populated displayName) or a small grace window elapses.
+   */
+  private _pendingJoinTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private _opts: Required<
     Pick<NetSessionOptions, 'presenceHz' | 'netObjectHz' | 'voice'>
   > &
@@ -180,6 +186,8 @@ export class NetSession extends EventTarget {
     this._sendNet({type: 'bye'});
     this.voice.disable();
     this.transport.close();
+    for (const t of this._pendingJoinTimers.values()) clearTimeout(t);
+    this._pendingJoinTimers.clear();
     for (const [, user] of this._users) {
       this.netObjects.releaseOwnedBy(user.peerId);
       user.dispose();
@@ -275,15 +283,10 @@ export class NetSession extends EventTarget {
   }
 
   private _onPeerJoin(peerId: string): void {
-    // Pre-create a NetUser entry; we'll fill display name when their HELLO arrives.
-    if (!this._users.has(peerId)) {
-      const user = new NetUser(peerId, {...DEFAULT_CAPABILITIES});
-      this._users.set(peerId, user);
-      this._root.add(user.avatar);
-      this.dispatchEvent(
-        new CustomEvent<UserEventDetail>('user-join', {detail: {user}})
-      );
-    }
+    // We defer creating a NetUser (and dispatching `user-join`) until the
+    // first message arrives — typically a hello carrying their display name.
+    // This keeps the public event clean: by the time a listener fires, the
+    // user object has its display name and capabilities populated.
     // Re-introduce ourselves so the new peer learns our capabilities.
     this._sendNet({
       type: 'hello',
@@ -296,6 +299,11 @@ export class NetSession extends EventTarget {
   }
 
   private _onPeerLeave(peerId: string): void {
+    const pending = this._pendingJoinTimers.get(peerId);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this._pendingJoinTimers.delete(peerId);
+    }
     const user = this._users.get(peerId);
     if (!user) return;
     this.netObjects.releaseOwnedBy(peerId);
@@ -320,20 +328,52 @@ export class NetSession extends EventTarget {
     if (msg.from === this.localPeerId) return; // ignore loopback
     let user = this._users.get(msg.from);
     if (!user) {
-      user = new NetUser(msg.from, {...DEFAULT_CAPABILITIES});
+      const initialDisplayName =
+        msg.type === 'hello' ? msg.displayName : undefined;
+      const initialCapabilities =
+        msg.type === 'hello' ? msg.capabilities : {...DEFAULT_CAPABILITIES};
+      user = new NetUser(msg.from, initialCapabilities, initialDisplayName);
+      user.avatar.displayName = user.displayName;
       this._users.set(msg.from, user);
       this._root.add(user.avatar);
-      this.dispatchEvent(
-        new CustomEvent<UserEventDetail>('user-join', {detail: {user}})
-      );
+      if (msg.type === 'hello') {
+        this.dispatchEvent(
+          new CustomEvent<UserEventDetail>('user-join', {detail: {user}})
+        );
+      } else {
+        // Defer dispatch: a hello is almost certainly already in flight from
+        // the remote's `_onPeerJoin` handler. Wait briefly so listeners see a
+        // populated displayName. If it never arrives, dispatch anyway.
+        const peerId = msg.from;
+        const dispatchUser = user;
+        const timer = setTimeout(() => {
+          if (this._pendingJoinTimers.delete(peerId)) {
+            this.dispatchEvent(
+              new CustomEvent<UserEventDetail>('user-join', {
+                detail: {user: dispatchUser},
+              })
+            );
+          }
+        }, 1500);
+        this._pendingJoinTimers.set(peerId, timer);
+      }
     }
     user.lastSeenMs = performance.now();
 
     switch (msg.type) {
-      case 'hello':
+      case 'hello': {
         user.displayName = msg.displayName ?? user.displayName;
         user.capabilities = msg.capabilities;
         user.avatar.displayName = user.displayName;
+        // Flush any deferred user-join now that we have the displayName.
+        const pending = this._pendingJoinTimers.get(msg.from);
+        if (pending !== undefined) {
+          clearTimeout(pending);
+          this._pendingJoinTimers.delete(msg.from);
+          this.dispatchEvent(
+            new CustomEvent<UserEventDetail>('user-join', {detail: {user}})
+          );
+        }
         // Reply with a welcome containing the rooms's known peer list.
         this._sendNet({
           type: 'welcome',
@@ -345,6 +385,7 @@ export class NetSession extends EventTarget {
           })),
         } as WelcomeMessage);
         break;
+      }
       case 'welcome':
         for (const p of msg.peers) {
           if (p.id === this.localPeerId) continue;
@@ -378,7 +419,14 @@ export class NetSession extends EventTarget {
         break;
       case 'netobject': {
         const obj = this.netObjects.get(msg.id);
-        if (obj && obj.ownerId !== this.localPeerId) {
+        if (!obj) break;
+        // If we both think we own it (e.g., both peers auto-owned the same
+        // deterministic id at create-time), the lex-smaller peer id wins —
+        // matches the explicit-claim tiebreak in NetObjectRegistry.
+        if (obj.ownerId === this.localPeerId && msg.from < this.localPeerId) {
+          obj.ownerId = msg.from;
+        }
+        if (obj.ownerId !== this.localPeerId) {
           obj.setTargetXform(msg.xform);
           if (msg.state) Object.assign(obj.state, msg.state);
         }
