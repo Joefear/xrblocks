@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import * as xb from 'xrblocks';
 import {
   BroadcastChannelTransport,
@@ -22,13 +21,6 @@ class TransportsSample extends xb.Script {
   private _statusEl?: HTMLSpanElement;
 
   async init() {
-    this.add(new THREE.HemisphereLight(0xffffff, 0x202030, 1.0));
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(2, 48),
-      new THREE.MeshStandardMaterial({color: 0x303040, roughness: 0.9})
-    );
-    floor.rotation.x = -Math.PI / 2;
-    this.add(floor);
     this._buildHud();
   }
 

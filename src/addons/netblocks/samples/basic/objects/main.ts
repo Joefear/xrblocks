@@ -30,14 +30,6 @@ class ObjectsSample extends NetSample {
   }
 
   protected onSession(session: NonNullable<this['net']['session']>) {
-    this.add(new THREE.HemisphereLight(0xffffff, 0x202030, 1.0));
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(2, 48),
-      new THREE.MeshStandardMaterial({color: 0x303040, roughness: 0.9})
-    );
-    floor.rotation.x = -Math.PI / 2;
-    this.add(floor);
-
     // Deterministic id ensures every tab shares the *same* cube.
     this._cube = session.createNetObject({id: 'shared-cube'});
     this._cube.position.set(0, 1.2, -1);

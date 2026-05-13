@@ -40,14 +40,6 @@ class EventsSample extends NetSample {
   }
 
   protected onSession(session: NonNullable<this['net']['session']>) {
-    this.add(new THREE.HemisphereLight(0xffffff, 0x202030, 1.0));
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(2, 48),
-      new THREE.MeshStandardMaterial({color: 0x303040, roughness: 0.9})
-    );
-    floor.rotation.x = -Math.PI / 2;
-    this.add(floor);
-
     session.events.on<BurstPayload>('emoji-burst', (payload) => {
       this._spawnBurst(payload);
     });

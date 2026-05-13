@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import {BroadcastChannelTransport} from 'netblocks';
 import {NetSample} from '../../Sample';
 
@@ -24,14 +23,6 @@ class PresenceSample extends NetSample {
   protected onSession(session: NonNullable<this['net']['session']>) {
     // Add a simple ambient hemisphere light + a floor disc so remote avatars
     // are visible without needing the simulator's debug visualizations.
-    this.add(new THREE.HemisphereLight(0xffffff, 0x202030, 1.0));
-
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(2, 48),
-      new THREE.MeshStandardMaterial({color: 0x303040, roughness: 0.9})
-    );
-    floor.rotation.x = -Math.PI / 2;
-    this.add(floor);
 
     session.addEventListener('user-join', (e) => {
       const user = (e as CustomEvent).detail.user;

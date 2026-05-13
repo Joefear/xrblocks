@@ -39,14 +39,6 @@ class VoiceSample extends NetSample {
   }
 
   protected onSession(session: NonNullable<this['net']['session']>) {
-    this.add(new THREE.HemisphereLight(0xffffff, 0x202030, 1.0));
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(4, 48),
-      new THREE.MeshStandardMaterial({color: 0x303040, roughness: 0.9})
-    );
-    floor.rotation.x = -Math.PI / 2;
-    this.add(floor);
-
     // Place each tab at a distinct point around a small circle so two
     // browser tabs on the same machine actually demo as spatial. In XR
     // the headset's real pose takes over and overrides this.
@@ -68,12 +60,26 @@ class VoiceSample extends NetSample {
     // Minimal WASD + mouse-drag look so the camera (and therefore the
     // local listener pose broadcast to peers) actually moves around in
     // a 2D browser window. In XR the real headset pose takes over.
-    window.addEventListener('keydown', (e) =>
-      this._keys.add(e.key.toLowerCase())
-    );
-    window.addEventListener('keyup', (e) =>
-      this._keys.delete(e.key.toLowerCase())
-    );
+    // Ignore keystrokes while the user is typing in an input/textarea
+    // (e.g. an in-page chat box) so the character doesn't walk away.
+    const isTyping = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        el.isContentEditable
+      );
+    };
+    window.addEventListener('keydown', (e) => {
+      if (isTyping()) return;
+      this._keys.add(e.key.toLowerCase());
+    });
+    window.addEventListener('keyup', (e) => {
+      this._keys.delete(e.key.toLowerCase());
+    });
     const canvas = document.querySelector('canvas');
     const target = canvas ?? document.body;
     target.addEventListener('mousedown', () => (this._dragging = true));
