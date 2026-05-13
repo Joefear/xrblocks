@@ -474,27 +474,32 @@ export class WebRTCTransport extends Transport {
 
   private async _initiate(remote: string): Promise<void> {
     const entry = this._ensureEntry(remote);
-    const dc = entry.pc.createDataChannel('netblocks', {ordered: true});
-    this._attachChannel(remote, dc);
-    const offer = await entry.pc.createOffer();
-    await entry.pc.setLocalDescription(offer);
-    this._send({
-      type: 'OFFER',
-      dst: remote,
-      // Public PeerJS broker validates the OFFER payload shape and closes
-      // the WS if `sdp` is not a serialized RTCSessionDescription, or if
-      // `type`/`connectionId` are missing.
-      payload: {
-        sdp: {type: 'offer', sdp: offer.sdp ?? ''},
-        type: 'data',
-        connectionId: this._connectionId(remote),
-        label: 'netblocks',
-        reliable: true,
-        serialization: 'binary',
-        metadata: {},
-        browser: 'chrome',
-      },
-    });
+    try {
+      const dc = entry.pc.createDataChannel('netblocks', {ordered: true});
+      this._attachChannel(remote, dc);
+      const offer = await entry.pc.createOffer();
+      await entry.pc.setLocalDescription(offer);
+      this._send({
+        type: 'OFFER',
+        dst: remote,
+        // Public PeerJS broker validates the OFFER payload shape and closes
+        // the WS if `sdp` is not a serialized RTCSessionDescription, or if
+        // `type`/`connectionId` are missing.
+        payload: {
+          sdp: {type: 'offer', sdp: offer.sdp ?? ''},
+          type: 'data',
+          connectionId: this._connectionId(remote),
+          label: 'netblocks',
+          reliable: true,
+          serialization: 'binary',
+          metadata: {},
+          browser: 'chrome',
+        },
+      });
+    } catch (err) {
+      this.emitError(err as Error);
+      this._teardown(remote);
+    }
   }
 
   private async _handleOffer(
@@ -503,26 +508,31 @@ export class WebRTCTransport extends Transport {
   ): Promise<void> {
     if (!desc?.sdp) return;
     const entry = this._ensureEntry(remote);
-    await entry.pc.setRemoteDescription({type: 'offer', sdp: desc.sdp});
-    for (const c of entry.pendingIce) {
-      try {
-        await entry.pc.addIceCandidate(c);
-      } catch {
-        // ignore
+    try {
+      await entry.pc.setRemoteDescription({type: 'offer', sdp: desc.sdp});
+      for (const c of entry.pendingIce) {
+        try {
+          await entry.pc.addIceCandidate(c);
+        } catch {
+          // ignore
+        }
       }
+      entry.pendingIce = [];
+      const answer = await entry.pc.createAnswer();
+      await entry.pc.setLocalDescription(answer);
+      this._send({
+        type: 'ANSWER',
+        dst: remote,
+        payload: {
+          sdp: {type: 'answer', sdp: answer.sdp ?? ''},
+          type: 'data',
+          connectionId: this._connectionId(remote),
+        },
+      });
+    } catch (err) {
+      this.emitError(err as Error);
+      this._teardown(remote);
     }
-    entry.pendingIce = [];
-    const answer = await entry.pc.createAnswer();
-    await entry.pc.setLocalDescription(answer);
-    this._send({
-      type: 'ANSWER',
-      dst: remote,
-      payload: {
-        sdp: {type: 'answer', sdp: answer.sdp ?? ''},
-        type: 'data',
-        connectionId: this._connectionId(remote),
-      },
-    });
   }
 
   private async _handleAnswer(
@@ -532,15 +542,20 @@ export class WebRTCTransport extends Transport {
     if (!desc?.sdp) return;
     const entry = this._entries.get(remote);
     if (!entry) return;
-    await entry.pc.setRemoteDescription({type: 'answer', sdp: desc.sdp});
-    for (const c of entry.pendingIce) {
-      try {
-        await entry.pc.addIceCandidate(c);
-      } catch {
-        // ignore
+    try {
+      await entry.pc.setRemoteDescription({type: 'answer', sdp: desc.sdp});
+      for (const c of entry.pendingIce) {
+        try {
+          await entry.pc.addIceCandidate(c);
+        } catch {
+          // ignore
+        }
       }
+      entry.pendingIce = [];
+    } catch (err) {
+      this.emitError(err as Error);
+      this._teardown(remote);
     }
-    entry.pendingIce = [];
   }
 
   /** Deterministic connection id per peer pair (sorted, broker requires it). */

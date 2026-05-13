@@ -104,7 +104,10 @@ export class VoiceChat {
   }
 
   disable(): void {
-    if (!this._enabled) return;
+    // Tear down unconditionally — answerer-side PCs can be created from
+    // inbound `handleSignal` calls even when we never enabled, and on
+    // session close those would otherwise leak (RTCPeerConnection +
+    // inbound MediaStream + ICE).
     this._enabled = false;
     for (const [pid] of this._peers) this._teardown(pid);
     this._localStream?.getTracks().forEach((t) => t.stop());
