@@ -290,6 +290,13 @@
         /\b(cup|mug|glass|bottle|book|magazine|remote|phone|pen|pencil|bowl|plate|coaster|candle|vase|pot|toy|tissue|controller|keys|wallet|clock)\b/i;
       const TINY_FLAT_LABEL_RE =
         /\b(switch|outlet|socket|thermostat|plug|vent|register|knob|handle|doorknob)\b/i;
+      // Architectural surfaces — Gemini sometimes returns these but they aren't
+      // "objects" we want boxes around.
+      const SURFACE_LABEL_RE =
+        /\b(wall|walls|floor|ceiling|ground|background|surface)\b/i;
+      function isSurfaceLabel(label) {
+        return !!label && SURFACE_LABEL_RE.test(label);
+      }
       function isFlatLabel(label) {
         return !!label && FLAT_LABEL_RE.test(label);
       }
@@ -848,6 +855,7 @@
         labelSprite.renderOrder = 3;
         group.add(labelSprite);
         group.userData.label = labelSprite;
+        group.userData.labelText = label;
 
         group.position.copy(obb.center);
         group.rotation.y = obb.angle;
@@ -931,6 +939,10 @@
         let kept = 0;
         for (const obj of detected) {
           try {
+            if (isSurfaceLabel(obj.label)) {
+              console.log('[objects_3d] skip surface label', obj.label);
+              continue;
+            }
             const box2d = obj.detection2DBoundingBox;
             const cx = (box2d.min.x + box2d.max.x) * 0.5;
             const cy = (box2d.min.y + box2d.max.y) * 0.5;
