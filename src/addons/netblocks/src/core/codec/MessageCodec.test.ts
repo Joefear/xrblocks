@@ -89,6 +89,19 @@ describe('MessageCodec', () => {
       expect(() => decodeMessage(buf)).toThrow(/MAX_MESSAGE_BYTES/);
     });
 
+    it('throws on malformed JSON', () => {
+      expect(() => decodeMessage('{not valid json')).toThrow();
+    });
+
+    it('round-trips an unknown message type without throwing (forward-compat)', () => {
+      // The codec deliberately doesn't validate `type`; NetSession's switch
+      // ignores unknown types so newer peers can ship message types older
+      // peers don't recognise without crashing them.
+      const json = '{"type":"future.feature","x":1}';
+      const decoded = decodeMessage(json);
+      expect(decoded.type).toBe('future.feature');
+    });
+
     it('accepts payloads at exactly the limit', () => {
       // A valid JSON 'ping' padded with whitespace up to the cap.
       const base = '{"type":"ping","nonce":1}';
