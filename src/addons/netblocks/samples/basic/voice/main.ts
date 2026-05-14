@@ -10,8 +10,8 @@ import {NetSample} from '../../Sample';
  * WebRTC peer connections; the SDP/ICE handshake is signalled through
  * NetSession's transport — here, BroadcastChannelTransport — so this
  * sample works between two tabs without any external broker. To play
- * with friends across devices, click "Start new room" in the top-right
- * HUD and share the link.
+ * with friends across devices, click "Start new room" in the top-left
+ * HUD and share the code.
  *
  * The audio is parented to each remote user's avatar head, so as you walk
  * around (or in XR, as the speaker walks around), their voice pans
@@ -95,36 +95,18 @@ class VoiceSample extends NetSample {
       this._applyLook();
     });
 
-    const hint = document.createElement('div');
-    hint.textContent =
-      'WASD / left stick to move · drag mouse / right stick to look';
-    Object.assign(hint.style, {
-      position: 'fixed',
-      top: '12px',
-      left: '12px',
-      padding: '6px 10px',
-      background: 'rgba(0,0,0,0.55)',
-      color: '#fff',
-      font: '12px system-ui, sans-serif',
-      borderRadius: '6px',
-      pointerEvents: 'none',
-      zIndex: '999',
-    } as Partial<CSSStyleDeclaration>);
-    document.body.appendChild(hint);
-
     this._btn = document.createElement('button');
     this._btn.textContent = '🎙️ Enable voice';
     Object.assign(this._btn.style, {
       position: 'fixed',
-      bottom: '20px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      padding: '14px 22px',
+      top: '12px',
+      right: '12px',
+      padding: '10px 18px',
       background: '#9177c7',
       color: '#fff',
       border: 'none',
       borderRadius: '24px',
-      fontSize: '16px',
+      fontSize: '14px',
       cursor: 'pointer',
       zIndex: '999',
     } as Partial<CSSStyleDeclaration>);
@@ -226,7 +208,7 @@ class VoiceSample extends NetSample {
     cam.getWorldDirection(fwd);
     fwd.y = 0;
     fwd.normalize();
-    const right = new THREE.Vector3(fwd.z, 0, -fwd.x);
+    const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
     const move = new THREE.Vector3();
     if (this._keys.has('w') || this._keys.has('arrowup')) move.add(fwd);
     if (this._keys.has('s') || this._keys.has('arrowdown')) move.sub(fwd);
