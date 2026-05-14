@@ -36,6 +36,15 @@ export class Peers {
     return this.list();
   }
 
+  /**
+   * The active session's RPC bus, for `events.emit('topic', payload)` /
+   * `events.on('topic', cb)`. Returns undefined when no session exists —
+   * callers should guard or wait until after `joinRoom()`.
+   */
+  get events() {
+    return this._net.session?.events;
+  }
+
   /** Subscribe to peer join/leave. Survives session rejoins. */
   on(event: PeerEvent, listener: PeerListener): () => void {
     let set = this._listeners.get(event);
