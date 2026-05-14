@@ -59,6 +59,14 @@ export interface NetSessionOptions {
   presenceHz?: number;
   /** Override the netobject broadcast frequency in Hz (default: 20). */
   netObjectHz?: number;
+  /**
+   * Convergence rate for non-owner interpolation, expressed as the
+   * exponential decay constant in `1 - exp(-rate * dt)`. Higher values
+   * snap faster. Default 12 matches the legacy fixed-fraction behaviour
+   * at 60 fps; at 90/120 Hz the dt-based form keeps the convergence
+   * speed visually identical instead of overshooting.
+   */
+  netObjectInterpRate?: number;
   /** Whether to enable voice chat at session start. Defaults to false. */
   voice?: boolean;
 }
@@ -96,11 +104,15 @@ export class NetSession extends EventTarget {
    */
   private _pendingJoinTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private _opts: Required<
-    Pick<NetSessionOptions, 'presenceHz' | 'netObjectHz' | 'voice'>
+    Pick<
+      NetSessionOptions,
+      'presenceHz' | 'netObjectHz' | 'netObjectInterpRate' | 'voice'
+    >
   > &
     NetSessionOptions;
   private _spatialVoice?: SpatialVoice;
   private _isOpen = false;
+  private _lastUpdateMs = 0;
   private _capabilities = {...DEFAULT_CAPABILITIES};
   private _onTransportPeerJoin: (e: Event) => void;
   private _onTransportPeerLeave: (e: Event) => void;
@@ -117,6 +129,7 @@ export class NetSession extends EventTarget {
     this._opts = {
       presenceHz: opts.presenceHz ?? 20,
       netObjectHz: opts.netObjectHz ?? DEFAULT_NETOBJECT_HZ,
+      netObjectInterpRate: opts.netObjectInterpRate ?? 12,
       voice: opts.voice ?? false,
       displayName: opts.displayName,
     };
@@ -269,6 +282,14 @@ export class NetSession extends EventTarget {
   update(_time?: number, _frame?: XRFrame): void {
     if (!this._isOpen) return;
     const now = performance.now();
+    // Frame-rate-independent dt for interpolation. Clamp to 100 ms so a
+    // tab that was suspended (or our own first tick where _lastUpdateMs
+    // is 0) doesn't produce a single huge step that snaps every remote
+    // object across the room.
+    const dt = this._lastUpdateMs
+      ? Math.min(0.1, (now - this._lastUpdateMs) / 1000)
+      : 0;
+    this._lastUpdateMs = now;
 
     // Outbound presence.
     this.presence.update(now);
@@ -300,9 +321,11 @@ export class NetSession extends EventTarget {
         // settling onto a final post-release pose. The render-delay buffer
         // means we'd otherwise see the unrendered tail of motion as a
         // visible snap-forward at let-go.
-        // ~12 Hz convergence per second of dt; we don't have dt here so use a
-        // fixed fraction tuned for 60+ fps host applications.
-        obj.stepInterpolation(0.2);
+        // Frame-rate-independent exponential convergence: at any dt, the
+        // fraction of remaining distance covered is `1 - exp(-rate*dt)`.
+        // The legacy fixed 0.2/frame at 60 fps corresponds to rate ~12.
+        const k = 1 - Math.exp(-this._opts.netObjectInterpRate * dt);
+        obj.stepInterpolation(k);
       }
     }
   }
