@@ -11,6 +11,7 @@ import {
   encodeMessage,
   HelloMessage,
   NetMessage,
+  NetObjectMessage,
   NetObjectSnapshotMessage,
 } from './codec/MessageCodec';
 import {NET_PROTOCOL_VERSION} from './constants/NetConstants';
@@ -110,5 +111,56 @@ describe('NetSession hello handler', () => {
     );
     expect(welcome).toBeDefined();
     expect(welcome!.to).toBe('joiner');
+  });
+});
+
+describe('NetSession late-join state-reset regression', () => {
+  it('joiner adopts a snapshot for an auto-owned NetObject it has never moved', async () => {
+    // Joiner side. We're "local-peer", we just constructed a NetObject which
+    // is auto-owned (ownerId === localPeerId) and pristine. An existing peer
+    // sends us a snapshot. We should *apply* it (xform + ownerId) — the old
+    // skip-if-I-own guard caused us to discard the snapshot and stay at
+    // constructor defaults.
+    const transport = new FakeTransport();
+    const session = new NetSession(transport, new THREE.Group());
+    await session.open('room');
+    const local = new NetObject({id: 'cube-1', ownerId: 'local-peer'});
+    session.netObjects.add(local);
+    expect(local._dirty).toBe(false);
+
+    transport.receive('existing-peer', {
+      type: 'netobject.snapshot',
+      objects: [
+        {id: 'cube-1', xform: [5, 6, 7, 0, 0, 0, 1, 1, 1, 1], ownerId: 'existing-peer'},
+      ],
+    } as NetObjectSnapshotMessage);
+
+    expect(local.position.toArray()).toEqual([5, 6, 7]);
+    expect(local.ownerId).toBe('existing-peer');
+  });
+
+  it('dirty owner does not yield to a lex-smaller silent broadcaster', async () => {
+    // Existing peer side. We own and have moved cube-1 (`_dirty=true`). A
+    // lex-smaller joiner ("aaa") starts broadcasting netobject updates with
+    // their constructor defaults before our snapshot reaches them. The old
+    // tiebreak handed ownership to "aaa" and snapped us to defaults; the
+    // new one keeps our authoritative state.
+    const transport = new FakeTransport();
+    transport.localPeerId = 'zzz';
+    const session = new NetSession(transport, new THREE.Group());
+    await session.open('room');
+    const owned = new NetObject({id: 'cube-1', ownerId: 'zzz'});
+    owned.position.set(1, 2, 3);
+    owned._dirty = true;
+    session.netObjects.add(owned);
+
+    transport.receive('aaa', {
+      type: 'netobject',
+      id: 'cube-1',
+      xform: [0, 0, 0, 0, 0, 0, 1, 1, 1, 1],
+    } as NetObjectMessage);
+
+    expect(owned.ownerId).toBe('zzz');
+    expect(owned.position.toArray()).toEqual([1, 2, 3]);
   });
 });

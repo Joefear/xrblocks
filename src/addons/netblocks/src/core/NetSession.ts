@@ -503,8 +503,16 @@ export class NetSession extends EventTarget {
         if (!obj) break;
         // If we both think we own it (e.g., both peers auto-owned the same
         // deterministic id at create-time), the lex-smaller peer id wins —
-        // matches the explicit-claim tiebreak in NetObjectRegistry.
-        if (obj.ownerId === this.localPeerId && msg.from < this.localPeerId) {
+        // matches the explicit-claim tiebreak in NetObjectRegistry. But
+        // never yield a copy we've actually been moving (`_dirty`) to a
+        // silent peer broadcasting defaults: that's the late-join race
+        // where a fresh joiner's first ticks would otherwise clobber the
+        // existing peer's authoritative state.
+        if (
+          obj.ownerId === this.localPeerId &&
+          msg.from < this.localPeerId &&
+          !obj._dirty
+        ) {
           obj.ownerId = msg.from;
         }
         if (obj.ownerId !== this.localPeerId) {
@@ -543,13 +551,16 @@ export class NetSession extends EventTarget {
         break;
       }
       case 'netobject.snapshot': {
-        // Late-join catch-up. Apply each entry, but never clobber objects
-        // we already own — our local state is canonical for those, and a
-        // remote peer's snapshot of them is by definition stale.
+        // Late-join catch-up. Apply each entry, but don't clobber objects
+        // we've actually been moving — our `_dirty` copy is canonical and
+        // the remote snapshot of it is by definition stale. A pristine
+        // auto-owned copy (created at construction but never moved) DOES
+        // accept the snapshot, otherwise the joiner would discard the
+        // existing peer's state and stay at constructor defaults.
         for (const entry of msg.objects) {
           const obj = this.netObjects.get(entry.id);
           if (!obj) continue;
-          if (obj.ownerId === this.localPeerId) continue;
+          if (obj.ownerId === this.localPeerId && obj._dirty) continue;
           obj.snapToXform(entry.xform);
           obj.ownerId = entry.ownerId;
           if (entry.state) {
