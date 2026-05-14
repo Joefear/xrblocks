@@ -12,6 +12,14 @@
  * Topics are arbitrary strings; payloads are anything that survives
  * `JSON.stringify`. This is the recommended primitive for chat, emoji,
  * cursor pings, button presses, etc.
+ *
+ * **Security note (cooperative-only).** The `fromPeerId` passed to
+ * handlers is the transport-reported sender; netblocks does not sign
+ * payloads, so a malicious peer on a peer-to-peer transport could
+ * fabricate topics or impersonate another peer. Treat incoming events as
+ * untrusted input — validate payload shape and never grant authority
+ * solely on a claimed peer id. For adversarial environments, terminate
+ * RPC at a trusted server.
  */
 import {NetMessage, RpcMessage} from '../codec/MessageCodec';
 import {SendFn} from '../presence/PresenceBroadcaster';

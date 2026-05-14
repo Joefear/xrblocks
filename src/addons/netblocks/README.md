@@ -275,3 +275,32 @@ See [`samples/SAMPLES.md`](./samples/SAMPLES.md). Highlights:
   smoothing so 20 Hz looks like 60 Hz.
 - **No CRDT.** Shared documents are out of scope. If you need them, layer
   Yjs or Automerge on top of `session.events.emit('crdt-update', ...)`.
+
+## Security and threat model
+
+netblocks is a **demo / prototype** networking layer. It is meant for
+small, cooperative rooms (think hack-day demos, internal share-screen
+moments, classroom co-presence) where every participant is trusted to
+play nice. A hardening pass against malicious peers is **out of scope**
+for this addon. In particular:
+
+- **Ownership claims are cooperative.** Any peer can claim, hold, or
+  release any `NetObject` simply by saying so. There is no central
+  arbiter; conflicts are tie-broken by lexicographic peer id, not by
+  authority. See `NetObjectRegistry`.
+- **Event sources are cooperative.** `session.events` handlers receive
+  the transport-reported sender id, but payloads are not signed. A
+  peer-to-peer transport cannot prevent a malicious peer from forging
+  topics, spoofing payloads, or impersonating another peer. See
+  `NetEvents`.
+- **Transports do not authenticate peers.** Both
+  `BroadcastChannelTransport` and `WebRTCTransport` (via the public
+  PeerJS broker) accept any browser tab that knows the room id. Treat
+  room ids as the only access control.
+- **No rate limiting.** A misbehaving peer can saturate your room with
+  presence updates or RPC traffic.
+
+For adversarial environments — anti-cheat, payments, anything where a
+malicious peer's actions cost real money or trust — terminate state at a
+server you control, validate every incoming message, and use netblocks
+only as a presence/transport veneer above that arbiter.

@@ -2,6 +2,13 @@
  * NetObjectRegistry: stores NetObjects by their id and resolves ownership
  * conflicts. Operations are intentionally O(1) and synchronous — netblocks
  * runs this in the per-frame update loop.
+ *
+ * **Security note (cooperative-only).** Ownership claims and releases are
+ * trusted as-stated: the registry has no way to verify that a peer
+ * claiming `obj` actually grabbed it on their end, and a malicious peer
+ * could forge claims, refuse to release, or spoof another peer's id at
+ * the transport layer. netblocks is demo-grade — for adversarial
+ * environments, layer a server-authoritative arbiter on top.
  */
 import {NetObject} from './NetObject';
 
