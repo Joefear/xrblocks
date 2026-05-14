@@ -225,6 +225,8 @@ export class Core {
     this.registry.register(this.renderer);
 
     this.renderer.xr.setReferenceSpaceType(options.referenceSpaceType);
+    // For desktop simulator:
+    window.addEventListener('resize', this.onWindowResize);
 
     if (!options.canvas) {
       const xrContainer = document.createElement('div');
@@ -273,10 +275,8 @@ export class Core {
       webXRRequiredFeatures.push('depth-sensing');
       webXRRequiredFeatures.push('local-floor');
       this.webXRSettings.depthSensing = {
-        usagePreference: [],
-        dataFormatPreference: [
-          this.options.depth.useFloat32 ? 'float32' : 'luminance-alpha',
-        ],
+        usagePreference: options.depth.usagePreference,
+        dataFormatPreference: options.depth.dataFormatPreference,
         depthTypeRequest: options.depth.depthTypeRequest,
         matchDepthView: options.depth.matchDepthView,
       };
@@ -391,9 +391,6 @@ export class Core {
     }
 
     await this.scriptsManager.syncScriptsWithScene(this.scene);
-
-    // For desktop only:
-    window.addEventListener('resize', this.onWindowResize.bind(this));
 
     this.renderer.setAnimationLoop(this.update.bind(this));
 
@@ -542,11 +539,11 @@ export class Core {
    * Handles browser window resize events to keep the camera and renderer
    * synchronized.
    */
-  private onWindowResize() {
+  private onWindowResize = () => {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-  }
+  };
 
   private renderSimulatorAndScene() {
     if (this.simulatorRunning) {
