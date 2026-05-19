@@ -89,10 +89,11 @@ export class Core {
   /** A container to hold all the systems in the scene hierarchy. */
   xrSystemsGroup = new XRSystems();
 
-  private renderSceneBound = this.renderScene.bind(this);
+  private renderSceneCallback = (cameraOverride?: THREE.Camera) =>
+    this.renderScene(cameraOverride);
 
   /** Manages the desktop XR simulator. */
-  simulator = new Simulator(this.renderSceneBound);
+  simulator = new Simulator(this.renderSceneCallback);
 
   /** Manages drag-and-drop interactions. */
   dragManager = new DragManager();
@@ -342,7 +343,7 @@ export class Core {
     );
     this.webXRSessionManager.addEventListener(
       WebXRSessionEventType.SESSION_END,
-      this.onXRSessionEnded.bind(this)
+      this.onXRSessionEnded
     );
 
     // Sets up xrButton.
@@ -359,7 +360,7 @@ export class Core {
         options.xrButton?.invalidText,
         options.xrButton?.startSimulatorText,
         options.xrButton?.showEnterSimulatorButton,
-        this.startSimulator.bind(this),
+        this.startSimulator,
         options.permissions
       );
       document.body.appendChild(this.xrButton.domElement);
@@ -393,10 +394,10 @@ export class Core {
 
     await this.scriptsManager.syncScriptsWithScene(this.scene);
 
-    this.renderer.setAnimationLoop(this.update.bind(this));
+    this.renderer.setAnimationLoop(this.update);
 
     if (this.physics) {
-      setInterval(this.physicsStep.bind(this), 1000 * this.physics.timestep);
+      setInterval(this.physicsStep, 1000 * this.physics.timestep);
     }
 
     if (this.options.reticles.enabled) {
@@ -424,7 +425,7 @@ export class Core {
    * @param time - The current time in milliseconds.
    * @param frame - The WebXR frame object, if in an XR session.
    */
-  private update(time: number, frame: XRFrame) {
+  private update = (time: number, frame: XRFrame) => {
     this.currentFrame = frame;
     this.timer.update(time);
     if (this.simulatorRunning) {
@@ -470,22 +471,22 @@ export class Core {
     this.renderSimulatorAndScene();
     this.screenshotSynthesizer.onAfterRender(
       this.renderer,
-      this.renderSceneBound,
+      this.renderSceneCallback,
       this.deviceCamera
     );
     if (this.simulatorRunning) {
       this.simulator.renderSimulatorScene();
     }
-  }
+  };
 
   /**
    * Advances the physics simulation by a fixed timestep and calls the
    * corresponding physics update on all active scripts.
    */
-  private physicsStep() {
+  private physicsStep = () => {
     this.physics!.physicsStep();
     this.scriptsManager.physicsStep();
-  }
+  };
 
   /**
    * Lifecycle callback executed when an XR session starts. Notifies all active
@@ -499,20 +500,20 @@ export class Core {
     this.scriptsManager.onXRSessionStarted(session);
   }
 
-  private async startSimulator() {
+  private startSimulator = async () => {
     this.xrButton?.domElement.remove();
     this.xrSystemsGroup.add(this.simulator);
     await this.scriptsManager.initScript(this.simulator);
     this.onSimulatorStarted();
-  }
+  };
 
   /**
    * Lifecycle callback executed when an XR session ends. Notifies all active
    * scripts.
    */
-  private onXRSessionEnded() {
+  private onXRSessionEnded = () => {
     this.scriptsManager.onXRSessionEnded();
-  }
+  };
 
   /**
    * Lifecycle callback executed when the desktop simulator starts. Notifies
