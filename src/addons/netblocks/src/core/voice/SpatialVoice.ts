@@ -64,7 +64,7 @@ export class SpatialVoice {
     // three.js's typings for setNodeSource want an AudioScheduledSourceNode,
     // but at runtime any AudioNode works for our purposes. Cast through any
     // to avoid pulling in a different code path on every browser.
-    const ctx = THREE.AudioContext.getContext();
+    const ctx = THREE.AudioContext.getContext() as AudioContext;
     // Browsers create the shared AudioContext suspended until a user gesture.
     // If a remote voice arrives before any local interaction, the
     // PositionalAudio graph stays silent forever. resume() is a no-op when
