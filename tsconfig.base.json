@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "es2022",
+    "target": "es2023",
     "module": "es2022",
     "moduleResolution": "bundler",
     "declaration": true,
@@ -11,6 +11,7 @@
     "forceConsistentCasingInFileNames": true,
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
-    "types": ["dom-speech-recognition"]
+    "types": ["dom-speech-recognition"],
+    "lib": ["dom", "es2023", "esnext.temporal"]
   }
 }
