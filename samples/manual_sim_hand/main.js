@@ -24,15 +24,19 @@ function toFixedNumber(value) {
   return Number(value.toFixed(6));
 }
 
+function createZeroRotationJson() {
+  const cleanRotations = {};
+  for (const jointName of ROTATION_JOINT_NAMES) {
+    cleanRotations[jointName] = [0, 0, 0];
+  }
+  return cleanRotations;
+}
+
 function cleanRotationsForJson(rotations) {
   const cleanRotations = {};
   for (const jointName of ROTATION_JOINT_NAMES) {
-    const rotation = rotations[jointName] ?? {};
-    cleanRotations[jointName] = [
-      toFixedNumber(rotation.x ?? 0),
-      toFixedNumber(rotation.y ?? 0),
-      toFixedNumber(rotation.z ?? 0),
-    ];
+    const rotation = rotations[jointName] ?? [0, 0, 0];
+    cleanRotations[jointName] = rotation.map(toFixedNumber);
   }
   return cleanRotations;
 }
@@ -324,8 +328,104 @@ class ManualSimHandScene extends xb.Script {
   }
 }
 
+class GestureHUD extends xb.Script {
+  init() {
+    this._active = {
+      left: new Map(),
+      right: new Map(),
+    };
+    this._container = document.createElement('section');
+    this._container.className = 'manual-sim-hand-gesture-panel';
+    this._container.innerHTML = `
+      <h2>Heuristic Gestures</h2>
+      <div class="manual-sim-hand-gesture-row">
+        <span>Left</span>
+        <strong data-hand="left" data-active="false">None</strong>
+      </div>
+      <div class="manual-sim-hand-gesture-row">
+        <span>Right</span>
+        <strong data-hand="right" data-active="false">None</strong>
+      </div>
+    `;
+    this._labels = {
+      left: this._container.querySelector('[data-hand="left"]'),
+      right: this._container.querySelector('[data-hand="right"]'),
+    };
+
+    document.body.append(this._container);
+
+    const gestures = xb.core.gestureRecognition;
+    if (!gestures) {
+      console.warn(
+        '[ManualSimHand] GestureRecognition is unavailable. ' +
+          'Make sure options.enableGestures() is called before xb.init().'
+      );
+      return;
+    }
+
+    const update = (event) => {
+      const {name, hand, confidence = 0} = event.detail;
+      this._active[hand].set(name, confidence);
+      this._refresh(hand);
+    };
+    const clear = (event) => {
+      const {name, hand} = event.detail;
+      this._active[hand].delete(name);
+      this._refresh(hand);
+    };
+
+    this._onGestureStart = update;
+    this._onGestureUpdate = update;
+    this._onGestureEnd = clear;
+
+    gestures.addEventListener('gesturestart', this._onGestureStart);
+    gestures.addEventListener('gestureupdate', this._onGestureUpdate);
+    gestures.addEventListener('gestureend', this._onGestureEnd);
+  }
+
+  _refresh(hand) {
+    const label = this._labels[hand];
+    const activeGestures = this._active[hand];
+    if (!label || !activeGestures || activeGestures.size === 0) {
+      if (label) {
+        label.dataset.active = 'false';
+        label.textContent = 'None';
+      }
+      return;
+    }
+
+    let topGesture = 'None';
+    let topConfidence = 0;
+    for (const [name, confidence] of activeGestures.entries()) {
+      if (confidence >= topConfidence) {
+        topGesture = name;
+        topConfidence = confidence;
+      }
+    }
+
+    label.dataset.active = 'true';
+    label.textContent = `${topGesture} (${topConfidence.toFixed(2)})`;
+  }
+
+  dispose() {
+    const gestures = xb.core.gestureRecognition;
+    if (gestures) {
+      if (this._onGestureStart) {
+        gestures.removeEventListener('gesturestart', this._onGestureStart);
+      }
+      if (this._onGestureUpdate) {
+        gestures.removeEventListener('gestureupdate', this._onGestureUpdate);
+      }
+      if (this._onGestureEnd) {
+        gestures.removeEventListener('gestureend', this._onGestureEnd);
+      }
+    }
+    this._container?.remove();
+  }
+}
+
 async function start() {
-  const handRotations = {};
+  const handRotations = createZeroRotationJson();
   let updateJsonViews = () => {};
   const applyHandRotations = () => {
     const hands = xb.core?.simulator?.hands;
@@ -337,15 +437,15 @@ async function start() {
   };
   updateJsonViews = createSidebar(
     (jointName, axis, value) => {
-      handRotations[jointName] = {
-        ...handRotations[jointName],
-        [axis]: value,
-      };
+      const axisIndex = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+      handRotations[jointName][axisIndex] = value;
       applyHandRotations();
     },
     () => {
-      for (const jointName of Object.keys(handRotations)) {
-        delete handRotations[jointName];
+      for (const rotation of Object.values(handRotations)) {
+        rotation[0] = 0;
+        rotation[1] = 0;
+        rotation[2] = 0;
       }
       applyHandRotations();
     },
@@ -368,7 +468,11 @@ async function start() {
   const options = new xb.Options();
   options.enableReticles();
   options.enableHands();
+  options.enableGestures();
   options.setAppTitle('Manual Simulator Hand');
+  options.gestures.provider = 'heuristics';
+  options.gestures.setGestureEnabled('point', true);
+  options.gestures.setGestureEnabled('spread', true);
   options.hands.enabled = true;
   options.hands.visualization = true;
   options.hands.visualizeJoints = true;
@@ -376,6 +480,7 @@ async function start() {
   options.simulator.defaultMode = xb.SimulatorMode.POSE;
 
   xb.add(new ManualSimHandScene());
+  xb.add(new GestureHUD());
   await xb.init(options);
   applyHandRotations();
 }

@@ -91,16 +91,14 @@ function createRestJoints(
 const LEFT_REST_JOINTS = createRestJoints(LEFT_HAND_NEUTRAL);
 const RIGHT_REST_JOINTS = createRestJoints(RIGHT_HAND_NEUTRAL);
 
-function getHandednessAxisValue(
+function getHandednessRotation(
   handedness: Handedness,
-  axis: 'x' | 'y' | 'z',
-  value = 0
+  rotation: SimulatorHandPoseRotations[JointName] = [0, 0, 0]
 ) {
-  // converts euler angles to match the handedness of the hand
-  if (handedness === Handedness.RIGHT && (axis === 'y' || axis === 'z')) {
-    return -value;
+  if (handedness !== Handedness.RIGHT) {
+    return rotation;
   }
-  return value;
+  return [rotation[0], -rotation[1], -rotation[2]] as const;
 }
 
 function resolveHandPoseRotations(
@@ -114,14 +112,9 @@ function resolveHandPoseRotations(
 
   for (const jointName of HAND_JOINT_NAMES) {
     const restJoint = restJoints.get(jointName)!;
-    const rotation = rotations[jointName];
+    const rotation = getHandednessRotation(handedness, rotations[jointName]);
     const offsetRotation = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(
-        getHandednessAxisValue(handedness, 'x', rotation?.x),
-        getHandednessAxisValue(handedness, 'y', rotation?.y),
-        getHandednessAxisValue(handedness, 'z', rotation?.z),
-        'XYZ'
-      )
+      new THREE.Euler(rotation[0], rotation[1], rotation[2], 'XYZ')
     );
     const parentName = HAND_JOINT_PARENT[jointName];
 

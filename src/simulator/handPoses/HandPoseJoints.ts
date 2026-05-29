@@ -6,12 +6,8 @@ export type SimulatorHandPoseJoints = {
   s?: number[];
 }[];
 
-export type SimulatorHandJointRotation = {
-  x?: number;
-  y?: number;
-  z?: number;
-};
+export type SimulatorHandJointRotationArray = [number, number, number];
 
 export type SimulatorHandPoseRotations = Partial<
-  Record<JointName, SimulatorHandJointRotation>
+  Record<JointName, SimulatorHandJointRotationArray>
 >;

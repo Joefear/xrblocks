@@ -201,6 +201,55 @@
   white-space: pre;
 }
 
+.manual-sim-hand-gesture-panel {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 20;
+  box-sizing: border-box;
+  width: 14rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.45rem;
+  background: rgba(8, 12, 18, 0.86);
+  color: #fff;
+  font-family: Arial, sans-serif;
+  pointer-events: none;
+  backdrop-filter: blur(12px);
+}
+
+.manual-sim-hand-gesture-panel h2 {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.manual-sim-hand-gesture-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.manual-sim-hand-gesture-row span {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.manual-sim-hand-gesture-row strong {
+  color: #fff;
+  font-weight: 500;
+  text-align: right;
+}
+
+.manual-sim-hand-gesture-row strong[data-active='false'] {
+  color: rgba(255, 255, 255, 0.48);
+}
+
 @media all and (max-width: 640px) {
   .manual-sim-hand-sidebar {
     top: auto;
@@ -209,5 +258,11 @@
     height: 45vh;
     border-left: none;
     border-top: 1px solid rgba(255, 255, 255, 0.16);
+  }
+
+  .manual-sim-hand-gesture-panel {
+    top: 0.75rem;
+    left: 0.75rem;
+    width: min(14rem, calc(100vw - 1.5rem));
   }
 }
