@@ -2,6 +2,7 @@ import type {DeepReadonly} from '../../utils/Types';
 
 import {LEFT_HAND_FIST, RIGHT_HAND_FIST} from './FistHandPoses';
 import type {SimulatorHandPoseJoints} from './HandPoseJoints';
+import {LEFT_HAND_NEUTRAL, RIGHT_HAND_NEUTRAL} from './NeutralHandPose';
 import {LEFT_HAND_PINCHING, RIGHT_HAND_PINCHING} from './PinchingHandPoses';
 import {LEFT_HAND_POINTING, RIGHT_HAND_POINTING} from './PointingHandPoses';
 import {LEFT_HAND_RELAXED, RIGHT_HAND_RELAXED} from './RelaxedHandPoses';
@@ -12,6 +13,7 @@ import {LEFT_HAND_VICTORY, RIGHT_HAND_VICTORY} from './VictoryHandPoses';
 
 // Enum of hand poses.
 export enum SimulatorHandPose {
+  NEUTRAL = 'neutral',
   RELAXED = 'relaxed',
   PINCHING = 'pinching',
   FIST = 'fist',
@@ -25,6 +27,7 @@ export enum SimulatorHandPose {
 export const SIMULATOR_HAND_POSE_TO_JOINTS_LEFT: DeepReadonly<
   Record<SimulatorHandPose, SimulatorHandPoseJoints>
 > = Object.freeze({
+  [SimulatorHandPose.NEUTRAL]: LEFT_HAND_NEUTRAL,
   [SimulatorHandPose.RELAXED]: LEFT_HAND_RELAXED,
   [SimulatorHandPose.PINCHING]: LEFT_HAND_PINCHING,
   [SimulatorHandPose.FIST]: LEFT_HAND_FIST,
@@ -38,6 +41,7 @@ export const SIMULATOR_HAND_POSE_TO_JOINTS_LEFT: DeepReadonly<
 export const SIMULATOR_HAND_POSE_TO_JOINTS_RIGHT: DeepReadonly<
   Record<SimulatorHandPose, SimulatorHandPoseJoints>
 > = Object.freeze({
+  [SimulatorHandPose.NEUTRAL]: RIGHT_HAND_NEUTRAL,
   [SimulatorHandPose.RELAXED]: RIGHT_HAND_RELAXED,
   [SimulatorHandPose.PINCHING]: RIGHT_HAND_PINCHING,
   [SimulatorHandPose.FIST]: RIGHT_HAND_FIST,
@@ -51,6 +55,7 @@ export const SIMULATOR_HAND_POSE_TO_JOINTS_RIGHT: DeepReadonly<
 export const SIMULATOR_HAND_POSE_NAMES: Readonly<
   Record<SimulatorHandPose, string>
 > = Object.freeze({
+  [SimulatorHandPose.NEUTRAL]: 'Neutral',
   [SimulatorHandPose.RELAXED]: 'Relaxed',
   [SimulatorHandPose.PINCHING]: 'Pinching',
   [SimulatorHandPose.FIST]: 'Fist',

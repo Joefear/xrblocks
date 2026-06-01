@@ -2,16 +2,21 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 
 import {HAND_JOINT_NAMES} from '../input/components/HandJointNames';
+import {Handedness} from '../input/Hands';
 import {Input} from '../input/Input';
 import type {DeepReadonly} from '../utils/Types';
 
 import {SimulatorHandPoseChangeRequestEvent} from './events/SimulatorHandEvents';
-import {SimulatorHandPoseJoints} from './handPoses/HandPoseJoints';
+import {
+  SimulatorHandPoseJoints,
+  SimulatorHandPoseRotations,
+} from './handPoses/HandPoseJoints';
 import {
   SIMULATOR_HAND_POSE_TO_JOINTS_LEFT,
   SIMULATOR_HAND_POSE_TO_JOINTS_RIGHT,
   SimulatorHandPose,
 } from './handPoses/HandPoses';
+import {resolveSimulatorHandPoseRotations} from './handPoses/HandPoseFK';
 import {SimulatorControllerState} from './SimulatorControllerState';
 import {SimulatorXRHand} from './SimulatorXRHand';
 
@@ -150,6 +155,42 @@ export class SimulatorHands {
 
     this.rightHandPose = pose;
     this.rightHandTargetJoints = SIMULATOR_HAND_POSE_TO_JOINTS_RIGHT[pose];
+    this.updateHandPosePanel();
+  }
+
+  setLeftHandRotations(rotations: SimulatorHandPoseRotations) {
+    if (this.leftHandPose === SimulatorHandPose.PINCHING) {
+      this.input.dispatchEvent({
+        type: 'selectend',
+        target: this.input.controllers[0],
+        data: {
+          handedness: 'left',
+        },
+      });
+    }
+    this.leftHandPose = undefined;
+    this.leftHandTargetJoints = resolveSimulatorHandPoseRotations(
+      Handedness.LEFT,
+      rotations
+    );
+    this.updateHandPosePanel();
+  }
+
+  setRightHandRotations(rotations: SimulatorHandPoseRotations) {
+    if (this.rightHandPose === SimulatorHandPose.PINCHING) {
+      this.input.dispatchEvent({
+        type: 'selectend',
+        target: this.input.controllers[1],
+        data: {
+          handedness: 'right',
+        },
+      });
+    }
+    this.rightHandPose = undefined;
+    this.rightHandTargetJoints = resolveSimulatorHandPoseRotations(
+      Handedness.RIGHT,
+      rotations
+    );
     this.updateHandPosePanel();
   }
 

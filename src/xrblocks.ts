@@ -47,6 +47,7 @@ export * from './physics/Physics';
 export * from './physics/PhysicsOptions';
 export * from './simulator/controlModes/SimulatorControlMode';
 export * from './simulator/events/SimulatorEvents';
+export * from './simulator/handPoses/HandPoseFK';
 export * from './simulator/handPoses/HandPoseJoints';
 export * from './simulator/handPoses/HandPoses';
 export * from './simulator/Simulator';
