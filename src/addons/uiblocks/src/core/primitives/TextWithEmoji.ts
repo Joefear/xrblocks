@@ -24,7 +24,7 @@ export type TextWithEmojiProperties = InProperties<TextWithEmojiOutProperties>;
 // It matches all emoji presentation sequences (including warning signs, hearts, and sparkles)
 // and groups Variation Selectors (\uFE0F), ZWJ Joiners (\u200D), and modifiers with their parent emoji.
 const WORD_EMOJI_REGEX =
-  /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*(?:\p{Emoji_Modifier})*|\s+|[a-zA-Z0-9]+|[^a-zA-Z0-9\s]/gu;
+  /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*(?:\p{Emoji_Modifier})*|\n|[ \t\r]+|[a-zA-Z0-9]+|[^a-zA-Z0-9\s]/gu;
 
 function getEmojiHex(emoji: string): string {
   let hex = Array.from(emoji)
@@ -122,7 +122,10 @@ export class TextWithEmoji extends Container<TextWithEmojiOutProperties> {
 
     // Reactively rebuild children when the text or sizing properties change
     this.cleanupEffect = effect(() => {
-      const currentText = this.properties.value.text ?? '';
+      const currentText = (this.properties.value.text ?? '').replace(
+        /\r\n/g,
+        '\n'
+      );
       const currentFontSize = this.properties.value.fontSize ?? 16;
       const emojiCdn = (this.properties.value.emojiCdn ?? 'twemoji') as
         | 'twemoji'
@@ -136,11 +139,20 @@ export class TextWithEmoji extends Container<TextWithEmojiOutProperties> {
       // Parse text into active structural segment tokens
       const segments = currentText.match(WORD_EMOJI_REGEX) || [];
       const activeSegments: Array<{
-        type: 'space' | 'emoji' | 'word';
+        type: 'space' | 'newline' | 'emoji' | 'word';
         text: string;
+        isConsecutiveNewline?: boolean;
       }> = [];
-      for (const segment of segments) {
-        if (/^\s+$/.test(segment)) {
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        if (segment === '\n') {
+          const isConsecutiveNewline = i === 0 || segments[i - 1] === '\n';
+          activeSegments.push({
+            type: 'newline',
+            text: segment,
+            isConsecutiveNewline,
+          });
+        } else if (/^[ \t\r]+$/.test(segment)) {
           activeSegments.push({type: 'space', text: segment});
         } else if (
           /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u.test(segment)
@@ -161,7 +173,7 @@ export class TextWithEmoji extends Container<TextWithEmojiOutProperties> {
           const child = this.children[i];
           const seg = activeSegments[i];
           if (
-            seg.type === 'space' &&
+            (seg.type === 'space' || seg.type === 'newline') &&
             !(
               child instanceof Container &&
               !(child instanceof Image) &&
@@ -192,6 +204,12 @@ export class TextWithEmoji extends Container<TextWithEmojiOutProperties> {
             spaceContainer.setProperties({
               width: currentFontSize * 0.26 * seg.text.length,
               height: currentFontSize,
+            });
+          } else if (seg.type === 'newline') {
+            const newlineContainer = child as Container;
+            newlineContainer.setProperties({
+              width: '100%',
+              height: seg.isConsecutiveNewline ? currentFontSize : 0,
             });
           } else if (seg.type === 'emoji') {
             const img = child as Image;
@@ -240,6 +258,12 @@ export class TextWithEmoji extends Container<TextWithEmojiOutProperties> {
               height: currentFontSize,
             });
             this.add(spaceContainer);
+          } else if (seg.type === 'newline') {
+            const newlineContainer = new Container({
+              width: '100%',
+              height: seg.isConsecutiveNewline ? currentFontSize : 0,
+            });
+            this.add(newlineContainer);
           } else if (seg.type === 'emoji') {
             const img = new Image({
               src: getEmojiUrl(seg.text, emojiCdn),
