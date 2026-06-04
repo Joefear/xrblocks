@@ -46,22 +46,11 @@ class NetblocksLipsyncSample extends NetSample {
     // AudioContext so 8 peers don't exhaust the browser's context quota.
     session.voice.onTrack((peerId, stream) => {
       const user = session.users.get(peerId);
-      console.log(
-        '[lipsync sample] onTrack',
-        'peerId=', peerId,
-        'hasUser=', !!user,
-        'audioTracks=', stream.getAudioTracks().length
-      );
       if (!user) return;
       this.detachMouth(peerId);
       const mouth = new LipsyncMouth(stream, {audioContext: this.sharedCtx});
       user.avatar.headPivot.add(mouth);
       this.mouths.set(peerId, mouth);
-      console.log(
-        '[lipsync sample] mouth attached to',
-        peerId,
-        'parent chain ok=', !!mouth.parent
-      );
     });
     session.voice.onTrackRemoved((peerId) => this.detachMouth(peerId));
 

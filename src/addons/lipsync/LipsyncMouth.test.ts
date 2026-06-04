@@ -5,7 +5,7 @@ import * as THREE from 'three';
 // which constructs a real AudioContext (jsdom can't provide one).
 vi.mock('xrblocks', async () => {
   const T = await import('three');
-  return {Script: T.Object3D};
+  return {Script: T.Object3D, core: {camera: undefined}};
 });
 
 import {LipsyncMouth} from './LipsyncMouth';

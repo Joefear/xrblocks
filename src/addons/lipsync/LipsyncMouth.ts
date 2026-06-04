@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import {Script} from 'xrblocks';
 
 import {computeAudioFeatures} from './computeAudioFeatures';
@@ -75,7 +74,6 @@ export class LipsyncMouth extends Script {
 
   private readonly mapper = new FormantVisemeMapper();
   private lastTime = 0;
-  private debugTick = 0;
 
   constructor(stream: MediaStream, opts: LipsyncMouthOptions = {}) {
     super();
@@ -131,18 +129,6 @@ export class LipsyncMouth extends Script {
       playP?.catch?.(() => undefined);
       this.primer = primer;
     }
-
-    // Lightweight debug: log once that we wired up. Helpful when chasing
-    // why a remote peer's mouth isn't moving.
-    const tracks = this.stream.getTracks?.() ?? [];
-    const audioTracks = this.stream.getAudioTracks?.() ?? [];
-    console.log(
-      '[lipsync] init',
-      'ctxState=', this.ctx.state,
-      'sampleRate=', this.ctx.sampleRate,
-      'tracks=', tracks.length,
-      'audioTracks=', audioTracks.length
-    );
   }
 
   override update(time?: number): void {
@@ -154,9 +140,15 @@ export class LipsyncMouth extends Script {
     )
       return;
     if (!this.mfccExtractor) return;
-    const now = typeof time === 'number' ? time : performance.now() / 1000;
-    const dt = this.lastTime ? Math.max(0.001, now - this.lastTime) : 0.016;
-    this.lastTime = now;
+    // xrblocks passes `time` in milliseconds (matches the rest of the
+    // codebase — see e.g. netblocks samples). Convert to seconds so the
+    // mapper's `1 - exp(-dt / tau)` smoothing stays frame-rate
+    // independent across 60/72/90/120 Hz XR refresh.
+    const nowMs = typeof time === 'number' ? time : performance.now();
+    const dt = this.lastTime
+      ? Math.max(0.001, Math.min(0.1, (nowMs - this.lastTime) / 1000))
+      : 0.016;
+    this.lastTime = nowMs;
 
     this.analyser.getByteFrequencyData(this.freqData);
     this.analyser.getFloatFrequencyData(this.freqDataFloat);
@@ -171,16 +163,6 @@ export class LipsyncMouth extends Script {
       },
       this.ctx!.sampleRate
     );
-
-    // Periodic debug: rms one in every ~3 seconds (assuming 60 Hz).
-    this.debugTick = (this.debugTick + 1) % 180;
-    if (this.debugTick === 0) {
-      console.log(
-        '[lipsync] update rms=', features.rms.toFixed(4),
-        'voiced=', features.voiced,
-        'f1=', Math.round(features.f1Hz), 'f2=', Math.round(features.f2Hz)
-      );
-    }
 
     if (features.rms < this.silenceThreshold) {
       // Force convergence toward zero on true silence.
@@ -232,7 +214,3 @@ export class LipsyncMouth extends Script {
 // Re-export for convenience so consumers can subscribe to viseme weights
 // without importing from the reducer file directly.
 export type {VisemeWeights} from './BlendshapeReducer';
-
-// Silence unused-name warnings while keeping THREE imported for the
-// extends signature visible to tooling.
-void THREE;

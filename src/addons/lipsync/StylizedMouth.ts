@@ -5,28 +5,36 @@ import type {VisemeWeights} from './BlendshapeReducer';
 export interface StylizedMouthOptions {
   /**
    * Approximate radius (metres) of the host head this mouth attaches to.
-   * Used to scale the mouth geometry and place it at the head surface.
+   * Used to scale the mouth quad and place it at the head surface.
    * Defaults to 0.1, matching netblocks `RemoteUserAvatar`'s head sphere.
    */
   headRadius?: number;
+  /** Square canvas dimension in pixels. Defaults to 256. */
+  textureSize?: number;
+}
+
+export interface LipMetrics {
+  /** Horizontal mouth width, normalised. Wider for /ee/, narrower for /oo/. */
+  width: number;
+  /** Vertical mouth opening, 0 (closed line) to ~1 (fully agape). */
+  openHeight: number;
 }
 
 /**
- * StylizedMouth: a tiny three.js `Object3D` holding a single dark mouth
- * mesh that deforms by scale + position changes in response to viseme
- * weights. Owns its own geometry and material; `dispose()` releases both.
+ * StylizedMouth: a flat quad textured with a single soft-edged dark
+ * ellipse that morphs from a thin "closed" line into a wider oval as
+ * the host speaks. Deliberately minimal — the quad sits flush with the
+ * front of the host head sphere and is anchored to the head's local
+ * forward (-Z) so the mouth follows head orientation like a real face.
  *
- * Geometry is a unit sphere flattened to a thin oval at rest. The mouth
- * sits a hair forward of its parent's origin so it doesn't z-fight when
- * parented to a head sphere.
- *
- * Intentionally minimal — the goal is "broad-strokes mouth motion you can
- * read across a room". For a more detailed mouth, callers can hide the
- * default mesh (`mouth.mesh.visible = false`) and parent their own
- * morph-target driven mesh, then watch the `visemes` field each frame.
+ * The quad is positioned at local z = -headRadius * 1.001 so it lands
+ * just outside the head sphere on the face side and never z-fights.
  */
 export class StylizedMouth extends THREE.Object3D {
-  readonly mesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
+  readonly mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  readonly texture: THREE.CanvasTexture;
+  private readonly canvas: HTMLCanvasElement;
+  private readonly ctx: CanvasRenderingContext2D | null;
   private readonly headRadius: number;
 
   /** Last viseme weights applied; useful for testing and debugging. */
@@ -39,56 +47,88 @@ export class StylizedMouth extends THREE.Object3D {
     consonant: 0,
   };
 
+  /** Computed lip metrics from the most recent setVisemes call. */
+  metrics: LipMetrics = {width: 1, openHeight: 0};
+
   constructor(opts: StylizedMouthOptions = {}) {
     super();
     this.headRadius = opts.headRadius ?? 0.1;
-    // Mouth base geometry scaled to ~40% of head width at rest.
-    const baseR = this.headRadius * 0.08;
-    const geom = new THREE.SphereGeometry(baseR, 16, 12);
-    const mat = new THREE.MeshBasicMaterial({color: 0x111111});
+    const size = opts.textureSize ?? 256;
+
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = size;
+    this.canvas.height = size;
+    this.ctx = this.canvas.getContext('2d');
+
+    this.texture = new THREE.CanvasTexture(this.canvas);
+    this.texture.colorSpace = THREE.SRGBColorSpace;
+    this.texture.anisotropy = 4;
+
+    // Quad covers roughly the lower half of the host face.
+    const planeSize = this.headRadius * 1.4;
+    const geom = new THREE.PlaneGeometry(planeSize, planeSize);
+    const mat = new THREE.MeshBasicMaterial({
+      map: this.texture,
+      transparent: true,
+      depthWrite: false,
+    });
     this.mesh = new THREE.Mesh(geom, mat);
+    // Flush with the head sphere on the face (-Z) side.
+    this.mesh.position.z = -this.headRadius * 1.001;
+    // PlaneGeometry's normal is +Z; rotate so it faces -Z (out the
+    // front of the head) instead of into the sphere.
+    this.mesh.rotation.y = Math.PI;
     this.add(this.mesh);
-    // Apply rest pose so scale + position are deterministic.
+
     this.setVisemes(this.visemes);
   }
 
   /**
-   * Drive the mouth geometry from a viseme weight set. Idempotent and
-   * cheap; safe to call every frame.
+   * Drive the mouth drawing from a viseme weight set. Cheap enough to
+   * call every frame.
    */
   setVisemes(v: VisemeWeights): void {
     this.visemes = v;
-    const openAmount = v.jawOpen * 0.9 + v.aa * 0.4 + v.oh * 0.55;
-    const horizontal =
-      1 + v.ee * 0.55 + v.consonant * 0.25 - v.oo * 0.65 - v.oh * 0.22;
-    // Small base vertical so the rest pose is a thin closed line, not a
-    // permanently open ring.
-    const verticalBase = 0.04;
-    const vertical = verticalBase + openAmount * 0.85 + v.oo * 0.09;
-    // Horizontal scale is "wider/narrower". Vertical is "more/less open".
-    // Depth is small but a touch larger for /oo/ to round the mouth.
-    const depth = 1.2 + v.oo * 1.5;
-    // Multiply by 2 because the geometry is half the head's diameter
-    // tall by default — viseme units are normalised so the maxima reach
-    // ~80% of head height when fully open.
-    this.mesh.scale.set(horizontal * 2, vertical * 4, depth);
-    // Place the mouth just in FRONT of the head — three.js / WebXR
-    // convention puts forward in the local -Z direction (cameras and
-    // head poses face -Z). The mouth sits at z = -headRadius * 1.02,
-    // pushed slightly further forward by /oo/ and /oh/.
-    this.mesh.position.z =
-      -(
-        this.headRadius * 1.02 +
-        this.headRadius * (v.oo * 0.12 + v.oh * 0.06)
-      );
-    this.mesh.position.y =
-      -this.headRadius * 0.35 -
-      this.headRadius * (v.aa * 0.06 + openAmount * 0.06);
+    this.metrics = computeMetrics(v);
+    this.drawMouth();
+    this.texture.needsUpdate = true;
   }
 
-  /** Free the geometry and material backing the mouth mesh. */
+  /** Free the texture, geometry, and material. */
   dispose(): void {
+    this.texture.dispose();
     this.mesh.geometry.dispose();
     this.mesh.material.dispose();
   }
+
+  private drawMouth(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const m = this.metrics;
+    const cx = w / 2;
+    const cy = h / 2;
+    const halfW = w * 0.22 * m.width;
+    // Small base height so the closed mouth is a thin line, growing
+    // into an oval as the speaker opens up.
+    const halfH = h * 0.012 + h * 0.13 * m.openHeight;
+
+    ctx.fillStyle = '#1a0808';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, halfW, halfH, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function clamp(x: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, x));
+}
+
+function computeMetrics(v: VisemeWeights): LipMetrics {
+  const openHeight = clamp(v.jawOpen * 0.9 + v.aa * 0.5 + v.oh * 0.5, 0, 1);
+  const width = clamp(1 + v.ee * 0.45 - v.oo * 0.55 - v.oh * 0.2, 0.35, 1.4);
+  return {width, openHeight};
 }
