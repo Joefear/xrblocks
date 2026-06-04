@@ -137,7 +137,7 @@ class NetblocksLipsyncSample extends NetSample {
         if (this.domBtn) this.domBtn.textContent = '🔇 Disable voice';
         this.spatialBtn?.setText('🔇 Disable voice');
         this.spatialStatus?.setText(
-          'voice: on — other tabs will see your mouth'
+          'voice: on. other tabs will see your mouth'
         );
       } catch (err) {
         const msg = (err as Error).message;

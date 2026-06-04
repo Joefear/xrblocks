@@ -12,7 +12,7 @@ import {LipsyncMouth} from 'lipsync';
  * immersive WebXR session.
  *
  * Tap the on-screen / in-scene mic button to grant audio permission,
- * then talk to the puppet — vowels open the mouth, /oo/ rounds it, /ee/
+ * then talk to the puppet. Vowels open the mouth, /oo/ rounds it, /ee/
  * widens it.
  */
 class LipsyncPuppetSample extends xb.Script {
@@ -123,7 +123,7 @@ class LipsyncPuppetSample extends xb.Script {
       this.puppetHead?.add(this.mouth);
       if (this.domBtn) this.domBtn.textContent = '🎙️ Live';
       this.spatialBtn?.setText('🎙️ Live');
-      this.spatialStatus?.setText('mic: on — talk to the puppet');
+      this.spatialStatus?.setText('mic: on. talk to the puppet');
     } catch (err) {
       this.started = false;
       const msg = (err as Error).message;

@@ -30,7 +30,7 @@ export interface LipMetrics {
 /**
  * StylizedMouth: a flat quad textured with a single soft-edged dark
  * ellipse that morphs from a thin "closed" line into a wider oval as
- * the host speaks. Deliberately minimal — the quad sits flush with the
+ * the host speaks. Deliberately minimal: the quad sits flush with the
  * front of the host head sphere and is anchored to the head's local
  * forward (-Z) so the mouth follows head orientation like a real face.
  *

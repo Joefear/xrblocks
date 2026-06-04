@@ -143,7 +143,7 @@ export class LipsyncMouth extends Script {
   override update(time?: number): void {
     if (!this.analyser || !this.freqData || !this.timeData) return;
     // xrblocks passes `time` in milliseconds (matches the rest of the
-    // codebase — see e.g. netblocks samples). Convert to seconds so the
+    // codebase; see e.g. netblocks samples). Convert to seconds so the
     // mapper's `1 - exp(-dt / tau)` smoothing stays frame-rate
     // independent across 60/72/90/120 Hz XR refresh.
     const nowMs = typeof time === 'number' ? time : performance.now();
@@ -162,8 +162,8 @@ export class LipsyncMouth extends Script {
     if (features.rms < this.silenceThreshold) {
       // True silence: collapse the mouth to its rest pose. Reset the
       // mapper so a subsequent voiced frame doesn't smooth from a
-      // stale-but-zero internal state, and explicitly write ZERO_VISEME
-      // — `setVisemes(this.mouth.visemes)` would reapply whatever shape
+      // stale-but-zero internal state, and explicitly write ZERO_VISEME.
+      // `setVisemes(this.mouth.visemes)` would reapply whatever shape
       // was last drawn, leaving the mouth frozen open after a mid-word
       // mute or peer disconnect.
       this.mapper.reset();
