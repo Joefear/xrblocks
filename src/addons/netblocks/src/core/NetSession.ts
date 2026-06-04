@@ -37,6 +37,8 @@ import {
 import {base64ToBytes, decodePose} from './codec/PoseCodec';
 import {
   DEFAULT_NETOBJECT_HZ,
+  DEFAULT_NETOBJECT_INTERP_RATE,
+  DEFAULT_PRESENCE_HZ,
   NET_PROTOCOL_VERSION,
   PRESENCE_RENDER_DELAY_MS,
 } from './constants/NetConstants';
@@ -125,6 +127,14 @@ export class NetSession extends EventTarget {
   private _onTransportPeerJoin: (e: Event) => void;
   private _onTransportPeerLeave: (e: Event) => void;
   private _onTransportMessage: (e: Event) => void;
+  // Send a final `bye` over the data channel so remote peers tear
+  // down their per-peer state immediately, instead of waiting for
+  // WebRTC ICE to time out (~15-30s) before noticing we're gone.
+  // Use `pagehide` rather than `beforeunload` because it also fires
+  // when the tab is bfcached on iOS Safari.
+  private _onPageHide = () => {
+    if (this._isOpen) this.close();
+  };
 
   constructor(
     transport: Transport,
@@ -135,9 +145,10 @@ export class NetSession extends EventTarget {
     this.transport = transport;
     this._root = root;
     this._opts = {
-      presenceHz: opts.presenceHz ?? 20,
+      presenceHz: opts.presenceHz ?? DEFAULT_PRESENCE_HZ,
       netObjectHz: opts.netObjectHz ?? DEFAULT_NETOBJECT_HZ,
-      netObjectInterpRate: opts.netObjectInterpRate ?? 12,
+      netObjectInterpRate:
+        opts.netObjectInterpRate ?? DEFAULT_NETOBJECT_INTERP_RATE,
       voice: opts.voice ?? false,
       displayName: opts.displayName,
       role: opts.role ?? 'user',
@@ -232,6 +243,14 @@ export class NetSession extends EventTarget {
     this._isOpen = true;
     this.voice.setLocalPeerId(this.transport.localPeerId);
 
+    // Send a final `bye` on tab close so remote peers tear down
+    // immediately. Without this, WebRTC peers wait for ICE failure
+    // (15-30s) before noticing we've gone — long enough that the
+    // departed avatar reads as a "frozen ghost" in the room.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', this._onPageHide);
+    }
+
     // Lazy-init spatial voice. Reuse CoreSound's THREE.AudioListener
     // (already attached to the camera) so we don't run two listeners /
     // two AudioContexts on the same camera.
@@ -263,6 +282,9 @@ export class NetSession extends EventTarget {
   close(): void {
     if (!this._isOpen) return;
     this._isOpen = false;
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', this._onPageHide);
+    }
     // Voice first so the per-peer voice `bye` and the
     // `netblocks/voice-state=false` broadcast arrive at remote peers
     // BEFORE the session-level `bye`. Otherwise the session bye

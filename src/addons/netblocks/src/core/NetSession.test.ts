@@ -227,4 +227,51 @@ describe('NetSession close ordering', () => {
     // already-removed user.
     expect(voiceByeIdx).toBeLessThan(byeIdx);
   });
+
+  // Regression: WebRTC peers only detect a closed peer via ICE
+  // failure, which takes 15–30s — long enough that the departed
+  // avatar reads as a frozen ghost in the room. Opening a session
+  // now registers a `pagehide` listener that calls `close()` so the
+  // session-level `bye` goes out over the data channel and the
+  // remote tears down immediately.
+  it('open() registers a pagehide handler that closes the session', async () => {
+    const added: Array<{type: string; listener: EventListener}> = [];
+    const removed: Array<{type: string; listener: EventListener}> = [];
+    const origAdd = window.addEventListener.bind(window);
+    const origRemove = window.removeEventListener.bind(window);
+    window.addEventListener = ((type: string, listener: EventListener) => {
+      added.push({type, listener});
+      return origAdd(type, listener);
+    }) as typeof window.addEventListener;
+    window.removeEventListener = ((
+      type: string,
+      listener: EventListener
+    ) => {
+      removed.push({type, listener});
+      return origRemove(type, listener);
+    }) as typeof window.removeEventListener;
+    try {
+      const transport = new FakeTransport();
+      const session = new NetSession(transport, new THREE.Group());
+      await session.open('room');
+      const ph = added.find((a) => a.type === 'pagehide');
+      expect(ph).toBeDefined();
+
+      // Trigger pagehide; session should close (and the transport
+      // should observe the call).
+      const closeSpy = vi.spyOn(transport, 'close');
+      ph!.listener(new Event('pagehide'));
+      expect(closeSpy).toHaveBeenCalled();
+      // close() must remove its own pagehide listener so a re-opened
+      // session in the same window doesn't fire stale handlers.
+      expect(
+        removed.find(
+          (r) => r.type === 'pagehide' && r.listener === ph!.listener
+        )
+      ).toBeDefined();
+    } finally {
+      window.addEventListener = origAdd;
+      window.removeEventListener = origRemove;
+    }
+  });
 });
