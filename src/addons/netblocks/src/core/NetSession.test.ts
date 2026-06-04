@@ -4,7 +4,17 @@ import * as THREE from 'three';
 // NetSession imports `xrblocks` only to read `xb.core.sound.listener` inside
 // open(). The real module instantiates a Core (and AudioContext) at import
 // time, which jsdom can't satisfy — and we never call open() here anyway.
-vi.mock('xrblocks', () => ({core: undefined}));
+// `RemoteUserAvatar` also reaches into `xb.StylizedFace` in its
+// constructor, so stub that with a bare Object3D.
+vi.mock('xrblocks', async () => {
+  const T = await import('three');
+  return {
+    core: undefined,
+    StylizedFace: class extends T.Object3D {
+      dispose() {}
+    },
+  };
+});
 
 import {
   decodeMessage,
