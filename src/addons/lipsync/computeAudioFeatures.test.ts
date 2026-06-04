@@ -71,6 +71,23 @@ describe('computeAudioFeatures', () => {
     expect(f.f2Hz).toBeLessThan(2500);
   });
 
+  it('f2 search ignores strong energy in adjacent bins outside the search range', () => {
+    // Boundary contamination check: with a wide 5-bin moving-average
+    // peak picker, a very loud single bin just below the F2 search
+    // range floor (800 Hz) could otherwise leak into the average for
+    // the lowest in-range bin and make it win against a real F2
+    // plateau higher up.
+    const inputs = silentInputs();
+    const binHz = SAMPLE_RATE / 2 / NUM_BINS;
+    const justBelowF2Bin = Math.floor(700 / binHz);
+    const realF2Bin = Math.round(2200 / binHz);
+    inputs.freqData[justBelowF2Bin] = 255;
+    for (let k = -2; k <= 2; k++) inputs.freqData[realF2Bin + k] = 140;
+    const f = computeAudioFeatures(inputs, SAMPLE_RATE);
+    expect(f.f2Hz).toBeGreaterThan(1800);
+    expect(f.f2Hz).toBeLessThan(2500);
+  });
+
   it('forwards the supplied mfcc vector through to the output', () => {
     const inputs = silentInputs();
     inputs.mfcc = Float32Array.from([

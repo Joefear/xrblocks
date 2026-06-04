@@ -89,20 +89,19 @@ function peakHzInRange(
   // peaks frequently come from individual harmonics of F0, not the
   // vocal-tract formant envelope. Averaging ±2 bins picks the wider
   // envelope peak so e.g. /oo/'s true F2 around 1000 Hz survives even
-  // when a louder harmonic spike sits at 2400 Hz.
+  // when a louder harmonic spike sits at 2400 Hz. Out-of-range bins
+  // are treated as zero (not skipped) so the edges of the search
+  // range aren't artificially inflated by a smaller window divisor.
+  const WIN = 5;
   let bestBin = -1;
   let bestVal = 0;
   for (let i = loBin; i <= hiBin; i++) {
     let sum = 0;
-    let count = 0;
     for (let k = -2; k <= 2; k++) {
       const j = i + k;
-      if (j >= 0 && j < freqData.length) {
-        sum += freqData[j];
-        count++;
-      }
+      if (j >= loBin && j <= hiBin) sum += freqData[j];
     }
-    const avg = sum / count;
+    const avg = sum / WIN;
     if (avg > bestVal) {
       bestVal = avg;
       bestBin = i;
