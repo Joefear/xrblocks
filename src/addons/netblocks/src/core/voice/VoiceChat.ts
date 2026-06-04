@@ -30,6 +30,13 @@ export interface VoiceChatOptions {
   iceServers?: RTCIceServer[];
   /** Constraints passed to getUserMedia.audio. */
   audioConstraints?: MediaTrackConstraints | true;
+  /**
+   * Fired when the local user's voice is enabled or disabled. NetSession
+   * uses this to broadcast the intent over the data channel so other
+   * peers can show a reliable "in voice chat" affordance that doesn't
+   * depend on browser-specific WebRTC track events.
+   */
+  onLocalStateChange?: (enabled: boolean) => void;
 }
 
 export type VoiceSendFn = (msg: VoiceSignalMessage) => void;
@@ -52,6 +59,7 @@ export class VoiceChat {
         echoCancellation: true,
         noiseSuppression: true,
       },
+      onLocalStateChange: opts.onLocalStateChange ?? (() => {}),
     };
   }
 
@@ -99,6 +107,7 @@ export class VoiceChat {
       audio: this._opts.audioConstraints,
     });
     this._enabled = true;
+    this._opts.onLocalStateChange(true);
     // Back-fill local tracks onto any peer connections that were created
     // earlier as answerers (remote enabled voice before us). Without this
     // those PCs would carry only the inbound audio, never our outbound.
@@ -114,7 +123,15 @@ export class VoiceChat {
     }
     for (const pid of currentPeers) {
       if (this._peers.has(pid)) continue;
-      this._connectTo(pid, /* asOfferer */ this._localId < pid);
+      const asOfferer = this._localId < pid;
+      this._connectTo(pid, asOfferer);
+      if (!asOfferer) {
+        // We're the higher-id side, so we don't initiate. Nudge the
+        // offerer in case they had torn down their PC to us (e.g. via a
+        // previous bye); without this they'd sit idle and audio would
+        // never re-establish after a non-offerer re-enable.
+        this._send({type: 'voice', to: pid, signal: {kind: 'hello'}});
+      }
     }
   }
 
@@ -123,10 +140,21 @@ export class VoiceChat {
     // inbound `handleSignal` calls even when we never enabled, and on
     // session close those would otherwise leak (RTCPeerConnection +
     // inbound MediaStream + ICE).
+    const wasEnabled = this._enabled;
     this._enabled = false;
+    // Tell each peer to drop their PC to us. Without this, the remote
+    // keeps an orphaned PC alive (RTCPeerConnection.close() does not
+    // signal anything to the remote) and on a subsequent enable() our
+    // fresh offer collides with the stale PC's DTLS/ICE state — audio
+    // silently fails to negotiate even though both sides show the
+    // correct "voice on" affordance.
+    for (const [pid] of this._peers) {
+      this._send({type: 'voice', to: pid, signal: {kind: 'bye'}});
+    }
     for (const [pid] of this._peers) this._teardown(pid);
     this._localStream?.getTracks().forEach((t) => t.stop());
     this._localStream = undefined;
+    if (wasEnabled) this._opts.onLocalStateChange(false);
   }
 
   /** Mute/unmute the local mic without tearing connections down. */
@@ -146,12 +174,28 @@ export class VoiceChat {
 
   /** NetSession routes inbound voice signals here. */
   async handleSignal(from: string, msg: VoiceSignalMessage): Promise<void> {
+    const sig = msg.signal;
+    if (sig.kind === 'bye') {
+      // Remote disabled voice and asked us to drop the PC. Without this
+      // we'd hang on to a stale PC that would collide with their next
+      // offer when they re-enable.
+      this._teardown(from);
+      return;
+    }
+    if (sig.kind === 'hello') {
+      // Remote enabled voice and is the non-offerer side, asking us to
+      // (re)initiate. Only act if we're enabled, we're the natural
+      // offerer for them, and we don't already have a live PC.
+      if (this._enabled && this._localId < from && !this._peers.has(from)) {
+        this._connectTo(from, true);
+      }
+      return;
+    }
     let peer = this._peers.get(from);
     if (!peer) {
       // Remote initiated; we're the answerer.
       peer = this._connectTo(from, false);
     }
-    const sig = msg.signal;
     try {
       if (sig.kind === 'offer') {
         await peer.pc.setRemoteDescription({type: 'offer', sdp: sig.sdp});
@@ -197,6 +241,23 @@ export class VoiceChat {
       const stream = ev.streams[0] ?? new MediaStream([ev.track]);
       entry!.inbound = stream;
       for (const h of this._onTrack) h(peerId, stream);
+      // The PC stays open for the lifetime of the peer connection even
+      // when a remote temporarily stops sending audio (e.g. they hit
+      // their own `disable()` which calls `track.stop()` on their
+      // outbound). Fire onTrackRemoved when the receiver's track ends
+      // so listeners (spatial voice, lipsync, label affordances) can
+      // collapse their state. Re-fire onTrack on `unmute` so the
+      // affordances come back if the peer toggles voice on again
+      // without re-negotiating.
+      ev.track.addEventListener('ended', () => {
+        for (const h of this._onTrackRemoved) h(peerId);
+      });
+      ev.track.addEventListener('mute', () => {
+        for (const h of this._onTrackRemoved) h(peerId);
+      });
+      ev.track.addEventListener('unmute', () => {
+        for (const h of this._onTrack) h(peerId, stream);
+      });
     });
     pc.addEventListener('connectionstatechange', () => {
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {

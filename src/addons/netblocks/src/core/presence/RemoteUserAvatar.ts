@@ -41,12 +41,31 @@ export interface RemoteUserAvatarOptions {
 export class RemoteUserAvatar extends THREE.Group {
   readonly peerId: string;
   private _displayName?: string;
+  private _voiceActive = false;
 
   get displayName(): string | undefined {
     return this._displayName;
   }
   set displayName(name: string | undefined) {
     this.setDisplayName(name);
+  }
+
+  /**
+   * Whether this peer currently has their microphone enabled. Driven by
+   * the `netblocks/voice-state` event NetSession listens for; when true,
+   * the floating name label gets a 🎙️ suffix so observers know the peer
+   * is in the voice chat without depending on the mouth animation.
+   */
+  get voiceActive(): boolean {
+    return this._voiceActive;
+  }
+  set voiceActive(on: boolean) {
+    if (this._voiceActive === on) return;
+    this._voiceActive = on;
+    if (this._nameLabel) {
+      this._nameLabel.text = this._labelString();
+      this._nameLabel.sync?.();
+    }
   }
 
   /** Smoothed pose buffer fed by NetSession. */
@@ -210,7 +229,8 @@ export class RemoteUserAvatar extends THREE.Group {
   }
 
   private _labelString(): string {
-    return this._displayName || this.peerId.slice(0, 6);
+    const base = this._displayName || this.peerId.slice(0, 6);
+    return this._voiceActive ? `${base} 🎙️` : base;
   }
 
   dispose(): void {

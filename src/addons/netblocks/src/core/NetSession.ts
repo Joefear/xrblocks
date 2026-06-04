@@ -83,7 +83,8 @@ export type NetSessionEventName =
   | 'close'
   | 'user-join'
   | 'user-leave'
-  | 'voice-state';
+  | 'voice-state'
+  | 'local-voice-state';
 
 export interface UserEventDetail {
   user: NetUser;
@@ -146,9 +147,41 @@ export class NetSession extends EventTarget {
       this._opts.presenceHz
     );
     this.events = new NetEvents((msg) => this._sendNet(msg));
-    this.voice = new VoiceChat((msg) => this._sendNet(msg));
+    this.voice = new VoiceChat((msg) => this._sendNet(msg), {
+      onLocalStateChange: (on) => {
+        // Broadcast our intent so other peers can show a reliable "in
+        // voice chat" affordance that doesn't depend on per-browser
+        // WebRTC track event timing.
+        this.events.emit('netblocks/voice-state', on);
+        // Also surface the change as a local CustomEvent so UI state
+        // (mic button label, status text) tracks the authoritative
+        // VoiceChat state rather than an optimistic flag in the app.
+        this.dispatchEvent(
+          new CustomEvent('local-voice-state', {detail: {on}})
+        );
+      },
+    });
     this.voice.onTrack((peerId, stream) => this._onVoiceTrack(peerId, stream));
-    this.voice.onTrackRemoved((peerId) => this._spatialVoice?.detach(peerId));
+    this.voice.onTrackRemoved((peerId) => this._onVoiceTrackRemoved(peerId));
+
+    // Track remote voice state from the data-channel signal. WebRTC's
+    // own track events fire inconsistently across browsers on mute, so
+    // this app-level intent is the source of truth for "is this peer
+    // currently in voice chat".
+    this.events.on(
+      'netblocks/voice-state',
+      (on: unknown, fromPeerId: string) => {
+        const user = this._users.get(fromPeerId);
+        if (user) user.avatar.voiceActive = !!on;
+      }
+    );
+    // When a new peer joins after we're already in voice, send them a
+    // snapshot so they don't display us as muted.
+    this.addEventListener('user-join', (e) => {
+      if (!this.voice.isEnabled()) return;
+      const peerId = (e as CustomEvent<UserEventDetail>).detail.user.peerId;
+      this.events.emitTo(peerId, 'netblocks/voice-state', true);
+    });
 
     this.transport.addEventListener(
       'peer-join',
@@ -646,5 +679,9 @@ export class NetSession extends EventTarget {
     this.dispatchEvent(
       new CustomEvent('voice-state', {detail: {peerId, on: true}})
     );
+  }
+
+  private _onVoiceTrackRemoved(peerId: string): void {
+    this._spatialVoice?.detach(peerId);
   }
 }
