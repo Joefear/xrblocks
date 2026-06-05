@@ -113,11 +113,7 @@ export class CustomGestureRecognizer {
     try {
       const relativeBoneAngles = xb.getRelativeBoneAngles(context);
       const tensor = tf.tensor1d(relativeBoneAngles);
-      const tensorReshaped = tensor.reshape([
-        1,
-        xb.HAND_BONE_IDX_CONNECTION_MAP.length,
-        1,
-      ]);
+      const tensorReshaped = tensor.reshape([1, relativeBoneAngles.length, 1]);
       const result = runWithTfjsTensors(this.model, tensorReshaped);
 
       const scores = result[0].as1D().arraySync();

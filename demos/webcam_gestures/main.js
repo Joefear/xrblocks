@@ -82,18 +82,7 @@ class WebcamHandContext {
   constructor(joints) {
     this.handedness = WEBCAM_HAND;
     this.handLabel = WEBCAM_HAND_LABEL;
-    this.globalTransform = new THREE.Matrix4();
     this.joints = joints;
-    this.localJoints = joints;
-    this.globalJoints = joints;
-  }
-
-  getLocalJointPositions() {
-    return jointMapToArray(this.localJoints);
-  }
-
-  getGlobalJointPositions() {
-    return jointMapToArray(this.globalJoints);
   }
 
   getJoint(jointName) {
@@ -386,19 +375,6 @@ function landmarkToVector(landmark) {
     0.5 - landmark.y,
     -(landmark.z ?? 0)
   );
-}
-
-function jointMapToArray(joints) {
-  const positions = new Float32Array(xb.HAND_JOINT_NAMES.length * 3);
-  xb.HAND_JOINT_NAMES.forEach((jointName, index) => {
-    const joint = joints.get(jointName);
-    if (!joint) return;
-    const offset = index * 3;
-    positions[offset] = joint.x;
-    positions[offset + 1] = joint.y;
-    positions[offset + 2] = joint.z;
-  });
-  return positions;
 }
 
 function createEmptyScores() {
