@@ -69,13 +69,11 @@ options.enableXRTransitions(); // fade transitions
 options.enableVR(); // immersive-vr instead of immersive-ar
 ```
 
-There is **no** `enablePhysics()` / `enableLighting()`:
+There is **no** `enablePhysics()`:
 
 ```js
 import RAPIER from '@dimforge/rapier3d-simd-compat';
 options.physics.RAPIER = RAPIER; // enables physics
-options.lighting = new xb.LightingOptions(xb.xrLightingOptions);
-options.lighting.enabled = true; // light estimation
 ```
 
 ## Key Globals & Lifecycle

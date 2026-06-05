@@ -108,10 +108,7 @@ xb.init(options);
 ```js
 import RAPIER from '@dimforge/rapier3d-simd-compat'; // physics engine
 options.physics.RAPIER = RAPIER; // assigning RAPIER enables physics
-// ..then implement initPhysics(physics) / physicsStep() in your Script.
-
-options.lighting = new xb.LightingOptions(xb.xrLightingOptions);
-options.lighting.enabled = true; // real-world light estimation
+// ...then implement initPhysics(physics) / physicsStep() in your Script.
 ```
 
 `options.formFactor = 'desktop'` autostarts the simulator; `?formFactor=desktop` in the
@@ -225,18 +222,17 @@ core — they only exist in the uiblocks addon.
 
 ## Common hallucinated-API mistakes to avoid
 
-| ❌ Don't                                                    | ✅ Do                                                                                              |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `options.enablePhysics()`                                   | `options.physics.RAPIER = RAPIER` + implement `initPhysics()`                                      |
-| `options.enableLighting()`                                  | `options.lighting = new xb.LightingOptions(xb.xrLightingOptions); options.lighting.enabled = true` |
-| Use `xb.core.renderer` / `xb.core.physics` in a constructor | They're created during `xb.init()`; use them in/after `init()`                                     |
-| `new xb.UIPanel(...)` / `new xb.UICard(...)`                | Those are the **uiblocks addon**; core uses `xb.SpatialPanel().addGrid()`                          |
-| `xb.ai.query('text')` (bare string)                         | `xb.ai.query({prompt: 'text'})`, and guard with `xb.ai.isAvailable()`                              |
-| Assume AI works with no key                                 | Provide `?key=...` or `keys.json`; handle the unavailable case                                     |
-| `rgba()`/`hsla()` colors in UI                              | hex strings (`'#ffffff'`) or `THREE.Color`                                                         |
-| Drive your own `requestAnimationFrame` loop                 | Put per-frame logic in `update(time, frame)`                                                       |
-| Forget `xb.add(script)` before `xb.init()`                  | Register every Script first                                                                        |
-| Import bare `three` without the pinned importmap            | Use the importmap from the README / a template                                                     |
+| ❌ Don't                                                    | ✅ Do                                                                     |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `options.enablePhysics()`                                   | `options.physics.RAPIER = RAPIER` + implement `initPhysics()`             |
+| Use `xb.core.renderer` / `xb.core.physics` in a constructor | They're created during `xb.init()`; use them in/after `init()`            |
+| `new xb.UIPanel(...)` / `new xb.UICard(...)`                | Those are the **uiblocks addon**; core uses `xb.SpatialPanel().addGrid()` |
+| `xb.ai.query('text')` (bare string)                         | `xb.ai.query({prompt: 'text'})`, and guard with `xb.ai.isAvailable()`     |
+| Assume AI works with no key                                 | Provide `?key=...` or `keys.json`; handle the unavailable case            |
+| `rgba()`/`hsla()` colors in UI                              | hex strings (`'#ffffff'`) or `THREE.Color`                                |
+| Drive your own `requestAnimationFrame` loop                 | Put per-frame logic in `update(time, frame)`                              |
+| Forget `xb.add(script)` before `xb.init()`                  | Register every Script first                                               |
+| Import bare `three` without the pinned importmap            | Use the importmap from the README / a template                            |
 
 ## Design principles (honor these when contributing)
 
