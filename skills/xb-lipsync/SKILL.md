@@ -48,22 +48,39 @@ The scripts manager calls `init()` once and `update(time)` every frame on `drive
 
 ## Netblocks integration
 
-`RemoteUserAvatar` already attaches a `StylizedFace` to every remote peer, so just point `LipsyncMouth` at it. Pass a shared `AudioContext` because browsers cap contexts at around six per page.
+`RemoteUserAvatar` already attaches a `StylizedFace` to every remote peer, so just point `LipsyncMouth` at it. Pass a shared `AudioContext` because browsers cap contexts at around six per page. Track drivers per peer so mic mute / unmute / leave doesn't leak.
 
 ```ts
 import * as THREE from 'three';
 import {LipsyncMouth} from 'xrblocks/addons/lipsync/index.js';
 
+private drivers = new Map<string, LipsyncMouth>();
+private sharedCtx = THREE.AudioContext.getContext();
+
+private detachDriver(peerId: string) {
+  const prior = this.drivers.get(peerId);
+  if (prior) {
+    prior.dispose();
+    prior.removeFromParent();
+    this.drivers.delete(peerId);
+  }
+}
+
 protected override onSession(session) {
-  const sharedCtx = THREE.AudioContext.getContext();
   session.voice.onTrack((peerId, stream) => {
     const user = session.users.get(peerId);
     if (!user) return;
+    this.detachDriver(peerId);
     const driver = new LipsyncMouth(stream, {
       target: user.avatar.face,
-      audioContext: sharedCtx,
+      audioContext: this.sharedCtx,
     });
     user.avatar.add(driver);
+    this.drivers.set(peerId, driver);
+  });
+  session.voice.onTrackRemoved((peerId) => this.detachDriver(peerId));
+  session.addEventListener('user-leave', (e) => {
+    this.detachDriver(e.detail.user.peerId);
   });
 }
 ```
