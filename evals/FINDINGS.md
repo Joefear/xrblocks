@@ -107,3 +107,61 @@ per-metric, the `api_match` column is where the signal lives. without-skill: 0.0
 - semantic correctness beyond api names (would need llm-as-judge)
 - effect on Pro vs Flash (different model, different prompt cost)
 - skill ablations (comment out one section, re-run, see which lines carry the weight)
+
+## v4: judge + smoke + ablations
+
+### llm-as-judge (gemini-2.5-pro)
+
+ran a second model over each agent output with the full skill content as ground truth. asks for `accomplishes_task`, `idiomatic_xrblocks` (both 1-5), and `would_merge` (yes/no).
+
+| task | with-skill | without-skill |
+|------|:----------:|:-------------:|
+| netblocks-presence | 5/5/yes | 2/1/no |
+| hands-pinch-spawn | 5/5/yes | 1/1/no |
+| ui-button-hud | 5/5/yes | 1/1/no |
+| ai-describe-camera | 5/5/yes | 1/1/no |
+
+the judge correctly identified each hallucination by name:
+- netblocks: "hallucinates a declarative custom-element API (xr-room, xr-remote-head)"
+- hands: "hallucinates an A-Frame-like API with custom elements (<xr-hands>) and events (pinchstarted)"
+- ui: "ignores xb.SpatialPanel, uses non-existent A-Frame components like xrb-button"
+- ai: "uses a hallucinated namespace (xr instead of xb) and invents APIs (scene.capture, xr.ai.multimodal)"
+
+first version of the judge used gemini-2.5-flash and only the description blurb. it gave both modes 5/5/yes because flash isn't skeptical enough and the blurb doesn't tell it what's real. switching to gemini-2.5-pro + full SKILL.md content fixed it.
+
+### headless smoke (playwright + chromium)
+
+serves the agent's workspace via a tiny http server, opens index.html in headless chromium, captures uncaught errors + failed network requests. importmap is rewritten to use the public `@build` CDN so the workspace is self-contained.
+
+both modes failed smoke on netblocks-presence, but for different reasons:
+- with-skill: tried to load `cdn.jsdelivr.net/gh/google/xrblocks@build/addons/netblocks/src` (no `/index.js`), 404'd
+- without-skill: tried to load `cdn.jsdelivr.net/npm/xr-blocks@0.4.1/dist/xr-blocks.js`, doesn't exist
+
+the with-skill failure is a **real bug in the xb-netblocks skill itself**: the skill's import examples are `'xrblocks/addons/netblocks/src'` (directory, no index.js suffix), which browsers can't resolve via the importmap. someone copy-pasting from the skill into a real app would hit the same 404.
+
+binary smoke metric (both 0) doesn't distinguish them, but the failed-request URL is the discriminator. a smarter smoke score could grade "wrong path but right project" higher than "fake project". for now, smoke counts as a sanity check, not a primary metric.
+
+### ablations (xb-netblocks, 6 sections)
+
+ran the baseline + one variant per section, each removing exactly that section from the system prompt:
+
+| variant | composite | delta vs baseline |
+|---------|----------:|------------------:|
+| baseline (full skill) | 1.0 | — |
+| no-frontmatter | 1.0 | 0 |
+| no-`# xb-netblocks: multiplayer XR` | 1.0 | 0 |
+| no-`When to use` | 1.0 | 0 |
+| no-`Quick start` | 1.0 | 0 |
+| no-`Share an object` | 1.0 | 0 |
+| no-`Transports` | 1.0 | 0 |
+
+**every single ablation scored 1.0**. binary api_match scoring can't see the difference. but the cumulative without-skill run scored 0.5, so the content matters in aggregate.
+
+interpretation: the skill is overdetermined for binary scoring. any subset of sections is enough to ground gemini in the right addon namespace. to surface which sections carry the weight, the ablation loop would need to use the llm-judge for finer granularity (worth doing in v5).
+
+### takeaways
+
+- llm-judge + binary scoring agree on direction. judge gives prose rationales that name the hallucinated apis, useful for skill maintainers.
+- smoke test surfaces real CDN-resolution bugs in skill examples, not just agent-side hallucinations.
+- binary api_match is a ceiling-bound metric. fine-grained ablations need the judge.
+- next: re-run ablations with the judge in the loop, plus add 4-8 harder prototyping tasks.
