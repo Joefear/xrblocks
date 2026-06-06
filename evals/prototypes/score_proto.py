@@ -70,10 +70,13 @@ def main(argv: list[str]) -> int:
     else:
         parse_err = []
 
-    composite = round(
-        0.25 * import_match + 0.25 * api_match + 0.25 * forbidden_clean + 0.25 * parse_ok,
-        3,
-    )
+    # Composite is the mean of the dimensions that actually had something to
+    # test. `import_match` is vacuously 1.0 when expected_imports is empty, so
+    # we drop it from the mean in that case to avoid inflating the score.
+    dims = [api_match, parse_ok, forbidden_clean]
+    if expected_imports:
+        dims.append(import_match)
+    composite = round(sum(dims) / len(dims), 3)
 
     result = {
         "task": task_dir.name,
