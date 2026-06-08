@@ -1,3 +1,2 @@
-tasks/*/golden.diff
-results/*/
-!results/.gitkeep
+# Per-model agent + judge results are regenerable from the source.
+results/gemini-*/
