@@ -29,7 +29,8 @@
           "xrblocks": "../../build/xrblocks.js",
           "xrblocks/addons/": "../../build/addons/",
           "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/vision_bundle.mjs",
-          "@google/genai": "https://cdn.jsdelivr.net/npm/@google/genai/+esm"
+          "@google/genai": "https://cdn.jsdelivr.net/npm/@google/genai/+esm",
+          "@huggingface/transformers": "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0"
         }
       }
     </script>
@@ -70,6 +71,20 @@
       .panel .row {
         display: flex;
         gap: 8px;
+        align-items: center;
+      }
+      .panel select {
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 1px solid #444;
+        background: #2a2a2a;
+        color: white;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .panel label {
+        font-size: 11px;
+        color: #aaa;
       }
       .panel .status {
         font-size: 12px;
@@ -204,6 +219,18 @@
         <button id="detect">Detect 3D objects</button>
         <button id="clear">Clear</button>
       </div>
+      <div class="row">
+        <label for="detectorSelect">detector</label>
+        <select id="detectorSelect">
+          <option value="mediapipe">mediapipe (on-device, COCO)</option>
+          <option value="gemini">gemini (cloud, open-vocab)</option>
+        </select>
+        <label for="maskSelect">mask</label>
+        <select id="maskSelect">
+          <option value="slimsam">slimsam-77 (tight)</option>
+          <option value="segmenter">mediapipe segmenter (loose)</option>
+        </select>
+      </div>
       <div class="status" id="status">
         Press detect to fit oriented 3D boxes around things in front of you.
       </div>
@@ -216,13 +243,34 @@
         FilesetResolver,
         InteractiveSegmenter,
       } from '@mediapipe/tasks-vision';
+      import {
+        AutoProcessor,
+        env as transformersEnv,
+        RawImage,
+        SamModel,
+      } from '@huggingface/transformers';
+
+      // Cache transformers.js model downloads in the browser so repeat runs
+      // don't re-fetch the SAM weights.
+      transformersEnv.allowLocalModels = false;
+
+      // Backend toggles via URL params so you can A/B the demo without an
+      // edit/reload cycle. Examples:
+      //   ?backend=gemini             (open-vocab cloud detector)
+      //   ?backend=mediapipe          (COCO on-device, default)
+      //   ?mask=slimsam               (transformers.js SAM, tighter, default)
+      //   ?mask=segmenter             (MediaPipe InteractiveSegmenter, looser)
+      const _qp = new URLSearchParams(window.location.search);
+      const DETECT_BACKEND =
+        _qp.get('backend') === 'gemini' ? 'gemini' : 'mediapipe';
+      const MASK_BACKEND =
+        _qp.get('mask') === 'segmenter' ? 'segmenter' : 'slimsam';
 
       const boxes = new THREE.Group();
       let xrStatusText = null;
 
-      // Lazy-loaded InteractiveSegmenter. Given a click point inside an image,
-      // returns a per-pixel mask of the object the user "tapped". We use the
-      // bbox centre as the click point for each detected object.
+      // Lazy-loaded MediaPipe InteractiveSegmenter. Kept as a fallback for
+      // environments where the SAM path can't load (no WebGPU + no WASM fp16).
       let _segmenter = null;
       let _segmenterPromise = null;
       function getSegmenter() {
@@ -244,6 +292,178 @@
           return _segmenter;
         })();
         return _segmenterPromise;
+      }
+
+      // Lazy-loaded SlimSAM-77-uniform via transformers.js. Tighter per-pixel
+      // masks than the MediaPipe segmenter, especially around wall-mounted
+      // objects where MediaPipe spills onto the surrounding wall. Apache-2,
+      // ~14 MB total (encoder + decoder). The encoder runs once per snapshot;
+      // the decoder runs per detection with the 2D bbox as the prompt.
+      const SAM_MODEL_ID = 'Xenova/slimsam-77-uniform';
+      let _sam = null;
+      let _samProc = null;
+      let _samPromise = null;
+      // SAM's ONNX session isn't reentrant: a second sam(...) call before the
+      // previous one resolves trips "Session already started". Detect runs are
+      // serial in the for-loop but multi-frame waits inside sampleDepth can
+      // overlap with later frames in batches with many objects. Serialise
+      // every sam(...) and proc(...) invocation behind a chained promise so
+      // ORT only ever sees one in-flight call.
+      let _samQueue = Promise.resolve();
+      function samSerialize(fn) {
+        const next = _samQueue.then(fn, fn);
+        _samQueue = next.catch(() => {});
+        return next;
+      }
+      function getSam() {
+        if (_sam && _samProc)
+          return Promise.resolve({sam: _sam, proc: _samProc});
+        if (_samPromise) return _samPromise;
+        _samPromise = (async () => {
+          // Prefer webgpu when available; transformers.js falls back to
+          // wasm/cpu transparently if the backend isn't supported.
+          const device =
+            'gpu' in navigator && navigator.gpu ? 'webgpu' : 'wasm';
+          _sam = await SamModel.from_pretrained(SAM_MODEL_ID, {
+            device,
+            dtype: device === 'webgpu' ? 'fp16' : 'fp32',
+          });
+          _samProc = await AutoProcessor.from_pretrained(SAM_MODEL_ID);
+          return {sam: _sam, proc: _samProc};
+        })();
+        return _samPromise;
+      }
+
+      // Run the SAM encoder on a snapshot ImageData once per Detect press.
+      // Subsequent per-detection mask requests reuse the embedding.
+      async function samEncodeSnapshot(snapshot) {
+        return samSerialize(async () => {
+          const {sam, proc} = await getSam();
+          const canvas = document.createElement('canvas');
+          canvas.width = snapshot.width;
+          canvas.height = snapshot.height;
+          canvas.getContext('2d').putImageData(snapshot, 0, 0);
+          const image = await RawImage.fromCanvas(canvas);
+          const image_inputs = await proc(image);
+          const image_embeddings = await sam.get_image_embeddings(image_inputs);
+          return {
+            image,
+            image_inputs,
+            image_embeddings,
+            width: snapshot.width,
+            height: snapshot.height,
+          };
+        });
+      }
+
+      // Per-detection: feed the SAM decoder a single bbox prompt and return
+      // a mask in the same shape sampleDepthInMask() already expects from the
+      // MediaPipe segmenter (width, height, getAsUint8Array() with <128 = fg).
+      async function samMaskFromBbox(samState, box2d) {
+        return samSerialize(async () => {
+          const {sam, proc} = await getSam();
+          const {image, image_embeddings, width, height} = samState;
+          const x1 = box2d.min.x * width;
+          const y1 = box2d.min.y * height;
+          const x2 = box2d.max.x * width;
+          const y2 = box2d.max.y * height;
+          const cx = (x1 + x2) * 0.5;
+          const cy = (y1 + y2) * 0.5;
+          const prompt_inputs = await proc(image, {
+            input_points: [
+              [
+                [
+                  [cx, cy],
+                  [x1, y1],
+                  [x2, y2],
+                ],
+              ],
+            ],
+            input_labels: [[[1, 2, 3]]],
+          });
+          const out = await sam({
+            ...prompt_inputs,
+            image_embeddings,
+          });
+          const masks = await proc.post_process_masks(
+            out.pred_masks,
+            prompt_inputs.original_sizes,
+            prompt_inputs.reshaped_input_sizes
+          );
+          const t = masks[0];
+          const dataBool = t.data;
+          const H = t.dims[t.dims.length - 2];
+          const W = t.dims[t.dims.length - 1];
+          const planeStride = H * W;
+          const numChannels = Math.max(
+            1,
+            Math.floor(dataBool.length / planeStride)
+          );
+          const ious = out.iou_scores?.data;
+          const bx1 = Math.max(0, Math.floor(x1 * (W / width)));
+          const by1 = Math.max(0, Math.floor(y1 * (H / height)));
+          const bx2 = Math.min(W, Math.ceil(x2 * (W / width)));
+          const by2 = Math.min(H, Math.ceil(y2 * (H / height)));
+          let best = 0;
+          let bestScore = -Infinity;
+          for (let c = 0; c < numChannels; c++) {
+            const off = c * planeStride;
+            let inside = 0;
+            let total = 0;
+            for (let y = 0; y < H; y++) {
+              const row = off + y * W;
+              const yIn = y >= by1 && y < by2;
+              for (let x = 0; x < W; x++) {
+                if (dataBool[row + x]) {
+                  total++;
+                  if (yIn && x >= bx1 && x < bx2) inside++;
+                }
+              }
+            }
+            if (total === 0) continue;
+            const containment = inside / total;
+            const iou = ious ? ious[c] : 0;
+            const score = containment + 0.05 * iou;
+            if (score > bestScore) {
+              bestScore = score;
+              best = c;
+            }
+          }
+          const offset = best * planeStride;
+          const buf = new Uint8Array(planeStride);
+          for (let i = 0; i < planeStride; i++) {
+            buf[i] = dataBool[offset + i] ? 0 : 255;
+          }
+          return {
+            width: W,
+            height: H,
+            getAsUint8Array: () => buf,
+            close: () => {},
+          };
+        });
+      }
+
+      // MediaPipe InteractiveSegmenter mask path. Takes the snapshot ImageData
+      // + a 2D bbox, prompts the segmenter with the bbox centre as a keypoint,
+      // and returns a mask in the same shape sampleDepthInMask expects.
+      // Used when ?mask=segmenter — looser than SAM but no model download.
+      async function segmenterMaskFromSnapshot(snapshot, box2d) {
+        const seg = await getSegmenter();
+        const canvas = document.createElement('canvas');
+        canvas.width = snapshot.width;
+        canvas.height = snapshot.height;
+        canvas.getContext('2d').putImageData(snapshot, 0, 0);
+        const cx = (box2d.min.x + box2d.max.x) * 0.5;
+        const cy = (box2d.min.y + box2d.max.y) * 0.5;
+        return await new Promise((resolve, reject) => {
+          try {
+            seg.segment(canvas, {keypoint: {x: cx, y: cy}}, (result) =>
+              resolve(result.categoryMask)
+            );
+          } catch (e) {
+            reject(e);
+          }
+        });
       }
 
       // Raycast each foreground mask pixel against the world-positioned depth
@@ -282,6 +502,38 @@
           }
         }
         return {points, foregroundPixels: fg};
+      }
+
+      // Multi-frame averaging wrapper. Each call to sampleDepthInMask reads
+      // the depth mesh's current vertex buffer; in the simulator the buffer
+      // is regenerated every frame from the live render, so successive calls
+      // across requestAnimationFrame ticks give independent depth samples for
+      // the same rays. Accumulating points across N frames before fitting
+      // pushes the OBB centroid toward the depth-stable mean of the surface
+      // and reduces the single-frame bias that's visible as box drift when
+      // the user orbits.
+      function nextFrame() {
+        return new Promise((r) => requestAnimationFrame(() => r()));
+      }
+      async function sampleDepthInMaskAcrossFrames(
+        mask,
+        box2d,
+        stride = 6,
+        frames = 3
+      ) {
+        const all = [];
+        let totalFg = 0;
+        for (let i = 0; i < frames; i++) {
+          if (i > 0) await nextFrame();
+          const {points, foregroundPixels} = sampleDepthInMask(
+            mask,
+            box2d,
+            stride
+          );
+          for (const p of points) all.push(p);
+          totalFg = Math.max(totalFg, foregroundPixels);
+        }
+        return {points: all, foregroundPixels: totalFg};
       }
 
       // Label categorisation. Each category gets a different fitting
@@ -1038,13 +1290,16 @@
           return;
         }
         clearBoxes();
-        let segmenter;
-        try {
-          segmenter = await getSegmenter();
-        } catch (e) {
-          console.warn('[objects_3d] segmenter init failed', e);
-          setStatus('segmenter failed to load (see console)');
-          return;
+        let samState = null;
+        if (MASK_BACKEND === 'slimsam') {
+          setStatus('loading sam (one-time)…');
+          try {
+            await getSam();
+          } catch (e) {
+            console.warn('[objects_3d] sam init failed', e);
+            setStatus('sam failed to load (see console)');
+            return;
+          }
         }
         const snapshot = await xb.core.deviceCamera.getSnapshot({
           outputFormat: 'imageData',
@@ -1053,6 +1308,17 @@
           setStatus('no camera frame');
           return;
         }
+        if (MASK_BACKEND === 'slimsam') {
+          setStatus('encoding snapshot…');
+          try {
+            samState = await samEncodeSnapshot(snapshot);
+          } catch (e) {
+            console.warn('[objects_3d] sam encoder failed', e);
+            setStatus('sam encoding failed (see console)');
+            return;
+          }
+        }
+        setStatus('fitting boxes…');
         let kept = 0;
         for (const obj of detected) {
           try {
@@ -1061,26 +1327,28 @@
               continue;
             }
             const box2d = obj.detection2DBoundingBox;
-            const cx = (box2d.min.x + box2d.max.x) * 0.5;
-            const cy = (box2d.min.y + box2d.max.y) * 0.5;
-            let segResult;
+            let mask;
             try {
-              segResult = segmenter.segment(snapshot, {
-                keypoint: {x: cx, y: cy},
-              });
+              mask =
+                MASK_BACKEND === 'slimsam'
+                  ? await samMaskFromBbox(samState, box2d)
+                  : await segmenterMaskFromSnapshot(snapshot, box2d);
             } catch (e) {
-              console.warn('[objects_3d] segment threw for', obj.label, e);
+              console.warn(
+                '[objects_3d]',
+                MASK_BACKEND,
+                'mask threw for',
+                obj.label,
+                e
+              );
               continue;
             }
-            const mask = segResult.categoryMask;
             if (!mask) {
               console.warn('[objects_3d] no mask for', obj.label);
               continue;
             }
-            const {points: raw, foregroundPixels} = sampleDepthInMask(
-              mask,
-              box2d
-            );
+            const {points: raw, foregroundPixels} =
+              await sampleDepthInMaskAcrossFrames(mask, box2d);
             mask.close();
             const cat = categorize(obj.label);
             // Category-specific outlier rejection. Flats skip upfront rejection
@@ -1199,13 +1467,31 @@
       options.depth.depthTexture.enabled = false;
       options.depth.matchDepthView = false;
       options.enableObjectDetection();
-      options.world.objects.backendConfig.activeBackend = 'mediapipe';
+      options.world.objects.backendConfig.activeBackend = DETECT_BACKEND;
       options.world.objects.showDebugVisualizations = false;
+      // Override the SDK default prompt: stock prompt caps at 5 objects and
+      // is heavily worded toward "primary nearby" items, which produces low
+      // recall on a typical living-room scene. Ask for an exhaustive list
+      // including wall-mounted and small things; cap at 20 to give the OBB
+      // fitter headroom without blowing latency.
+      options.world.objects.backendConfig.gemini.systemInstruction =
+        'List every distinct object visible in the image, including small ' +
+        'items (cups, books, remotes), wall-mounted things (pictures, ' +
+        'switches, TVs), and ceiling fixtures (lamps, lights). For each, ' +
+        'return ymin, xmin, ymax, xmax as integers from 0 to 1000 (top-left ' +
+        'origin) and a short lowercase objectName. List up to 20 objects. ' +
+        'Skip walls, floor, ceiling, and any human body parts or UI ' +
+        'elements attached to them.';
+      // Lower MediaPipe's score gate so the demo surfaces borderline COCO
+      // detections (lamps, books, etc. that hover around 0.4). Stock 0.5 is
+      // tuned for production; for a demo we'd rather over-detect.
+      options.world.objects.backendConfig.mediapipe.scoreThreshold = 0.3;
       options.reticles.enabled = true;
       options.setAppTitle('3D Object Boxes');
 
       xb.init(options);
       xb.core.scene.add(boxes);
+      setStatus(`Press Detect. backend=${DETECT_BACKEND} mask=${MASK_BACKEND}`);
 
       const xrPanel = new xb.SpatialPanel({
         width: 0.3,
@@ -1246,6 +1532,22 @@
         clearBoxes();
         setStatus('cleared');
       });
+
+      // Backend selector: reflect current selection and reload on change so
+      // the `options.world.objects.backendConfig.activeBackend` + mask path
+      // get re-initialised cleanly (both must be set before xb.init()).
+      const detectorSel = document.getElementById('detectorSelect');
+      const maskSel = document.getElementById('maskSelect');
+      detectorSel.value = DETECT_BACKEND;
+      maskSel.value = MASK_BACKEND;
+      function reloadWithBackends() {
+        const p = new URLSearchParams(window.location.search);
+        p.set('backend', detectorSel.value);
+        p.set('mask', maskSel.value);
+        window.location.search = '?' + p.toString();
+      }
+      detectorSel.addEventListener('change', reloadWithBackends);
+      maskSel.addEventListener('change', reloadWithBackends);
     </script>
   </body>
 </html>
