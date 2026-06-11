@@ -1,6 +1,6 @@
 {
   "name": "xrblocks",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "XR Blocks SDK",
   "main": "build/xrblocks.js",
   "types": "build/xrblocks.d.ts",
@@ -21,7 +21,8 @@
     "test:watch": "vitest"
   },
   "files": [
-    "build"
+    "build",
+    "skills"
   ],
   "repository": {
     "type": "git",
@@ -54,7 +55,7 @@
     "@types/three": "^0.184.0",
     "@types/webxr": "^0.5.23",
     "@vitest/coverage-v8": "^4.1.8",
-    "concurrently": "^9.2.1",
+    "concurrently": "^10.0.3",
     "eslint": "^9.35.0",
     "eslint-plugin-tsdoc": "^0.5.2",
     "glob": "^11.0.3",
