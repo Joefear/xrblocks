@@ -22,7 +22,6 @@ import {UI} from '../ui/UI';
 import {callInitWithDependencyInjection} from '../utils/DependencyInjection';
 import {loadingSpinnerManager} from '../utils/LoadingSpinnerManager';
 import {traverseUtil} from '../utils/SceneGraphUtils';
-import {warnOnce} from '../utils/utils';
 import {DragManager} from '../ux/DragManager';
 import {World} from '../world/World';
 import {WorldOptions} from '../world/WorldOptions';
@@ -146,7 +145,7 @@ export class Core {
    */
   get renderer(): THREE.WebGLRenderer|undefined {
     if (!this._renderer) {
-      warnOnce(
+      console.warn(
         'xb.core.renderer is not available until xb.init() creates it. ' +
           "Access it in or after your Script's init() method."
       );
