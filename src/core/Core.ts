@@ -143,7 +143,7 @@ export class Core {
    * The WebGL renderer, created during {@link Core.init}. Reading it before
    * `init()` has run returns `undefined` and logs a one-time warning.
    */
-  get renderer(): THREE.WebGLRenderer|undefined {
+  get renderer(): THREE.WebGLRenderer {
     if (!this._renderer) {
       console.warn(
         'xb.core.renderer is not available until xb.init() creates it. ' +
