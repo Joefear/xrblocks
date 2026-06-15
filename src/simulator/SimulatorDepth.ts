@@ -28,6 +28,28 @@ export class SimulatorDepth {
 
   private projectionMatrixArray = new Float32Array(16);
 
+  // Throttle state. The depth pass is expensive (a full scene render to
+  // a 160x160 render target + a getRenderTargetPixelsAsync readback that
+  // burns several ms of main-thread time per call on desktop). We
+  // therefore:
+  //   1. Don't queue a new updateDepth while the previous async pass is
+  //      still in flight. Without this guard simulatorUpdate fires one
+  //      promise per frame and the readback fence polling stacks up.
+  //   2. Skip the pass entirely (no render + no readback) when the depth
+  //      camera hasn't moved or rotated meaningfully since the last
+  //      completed update. A static desktop scene therefore computes
+  //      depth once on first frame and again only when the user drags.
+  private updateInFlight = false;
+  private lastDepthPos = new THREE.Vector3(NaN, NaN, NaN);
+  private lastDepthQuat = new THREE.Quaternion(NaN, NaN, NaN, NaN);
+  /**
+   * Translation (m) and rotation (rad) thresholds below which the depth
+   * pass is skipped. Tuned for desktop sim: 1 cm and ~0.5 deg keep depth
+   * crisp during a drag without firing on JS-numerical noise.
+   */
+  motionPositionEpsilon = 0.01;
+  motionRotationEpsilon = 0.01;
+
   constructor(private simulatorScene: SimulatorScene) {}
 
   /**
@@ -64,8 +86,32 @@ export class SimulatorDepth {
 
   update() {
     this.updateDepthCamera();
+    // Skip both the render-to-target and the readback when an earlier
+    // updateDepth() is still resolving its readback fence. We'd just
+    // race ourselves and stack up promises.
+    if (this.updateInFlight) return;
+    // Skip when the depth camera hasn't meaningfully changed since the
+    // last completed update. depthHasChanged uses configurable
+    // translation + rotation epsilons so JS-numerical noise on a held
+    // camera doesn't force a needless pass.
+    if (!this.depthHasChanged()) return;
+    this.lastDepthPos.copy(this.depthCamera.position);
+    this.lastDepthQuat.copy(this.depthCamera.quaternion);
     this.renderDepthScene();
-    this.updateDepth();
+    this.updateInFlight = true;
+    this.updateDepth().finally(() => {
+      this.updateInFlight = false;
+    });
+  }
+
+  private depthHasChanged(): boolean {
+    // Force the first update through (lastDepthPos seeded with NaN).
+    if (Number.isNaN(this.lastDepthPos.x)) return true;
+    const dpos = this.depthCamera.position.distanceTo(this.lastDepthPos);
+    if (dpos > this.motionPositionEpsilon) return true;
+    // Quaternion angleTo gives radians between two orientations.
+    const dquat = this.depthCamera.quaternion.angleTo(this.lastDepthQuat);
+    return dquat > this.motionRotationEpsilon;
   }
 
   private updateDepthCamera() {
