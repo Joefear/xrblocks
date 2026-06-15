@@ -378,15 +378,19 @@ export class FaceMirror extends xb.Script {
         height: 10,
         fillColor: 'rgba(255, 255, 255, 0.08)',
         cornerRadius: 5,
-        // Anchor children to the left so the fill grows rightward from
-        // 0%. Without this the fill (which has an explicit width) is
-        // centered in the track and visibly bleeds past the left edge
-        // as the bar grows.
-        flexDirection: 'row',
-        justifyContent: 'flex-start',
-        alignItems: 'flex-start',
+        // The track is the positioning container for the absolutely
+        // positioned fill child below.
+        positionType: 'relative',
       });
       const fill = new UIPanel({
+        // Pin the fill to the track's left edge via absolute
+        // positioning. Without this Yoga centers a child with explicit
+        // width along the track's cross axis, so the bar visibly
+        // expands from the centre and bleeds past the left edge as the
+        // value grows.
+        positionType: 'absolute',
+        positionLeft: 0,
+        positionTop: 0,
         width: '0%',
         height: '100%',
         fillColor: '#4796e3',
