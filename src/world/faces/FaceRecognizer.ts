@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import {
+  acceleratedRaycast,
+  computeBoundsTree,
+  disposeBoundsTree,
+} from 'three-mesh-bvh';
 import {getCameraParametersSnapshot} from '../../camera/CameraUtils';
 import {XRDeviceCamera} from '../../camera/XRDeviceCamera';
 import {Script} from '../../core/Script';
@@ -7,6 +12,22 @@ import {WorldOptions} from '../WorldOptions';
 import {DetectedFace} from './DetectedFace';
 import {BaseFaceBackend, FaceBackendContext} from './FaceDetectorBackend';
 import {MediaPipeFaceBackend} from './backends/MediaPipeFaceBackend';
+
+// Wire three-mesh-bvh into THREE so any Mesh.raycast() that has a
+// computed boundsTree goes through the BVH-accelerated path. Meshes
+// without a boundsTree fall back to the stock walker, so this patch is
+// safe to apply globally and idempotent across modules.
+// FaceLandmarker emits 478 landmarks per face and we raycast each one
+// against the depth mesh in processFaceLandmarkerResult. The stock
+// raycaster is O(triangles) per ray and the depth mesh is a few thousand
+// triangles, so without BVH the per-detection raycast loop alone can
+// dominate the frame budget. BVH drops it to O(log triangles).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(THREE.Mesh.prototype as any).raycast = acceleratedRaycast;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(THREE.BufferGeometry.prototype as any).computeBoundsTree = computeBoundsTree;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(THREE.BufferGeometry.prototype as any).disposeBoundsTree = disposeBoundsTree;
 
 /**
  * A detector script that orchestrates face landmark estimation. Manages
@@ -136,6 +157,12 @@ export class FaceRecognizer extends Script {
     const clonedGeometry = geometry.clone();
     clonedGeometry.computeBoundingSphere();
     clonedGeometry.computeBoundingBox();
+    // Build a BVH over the cloned depth-mesh geometry once per detection
+    // so the per-landmark raycasts inside processFaceLandmarkerResult go
+    // through the BVH-accelerated path instead of walking every triangle
+    // 478 times. The clone is disposed by the GC at end of detection.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (clonedGeometry as any).computeBoundsTree();
     const depthMeshSnapshot = new THREE.Mesh(
       clonedGeometry,
       new THREE.MeshBasicMaterial()
