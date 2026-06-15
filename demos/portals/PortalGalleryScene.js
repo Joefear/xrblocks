@@ -175,6 +175,13 @@ export class PortalGalleryScene extends xb.Script {
         this.immersives.push(null);
       }
     }
+
+    // BVH only on the immersive sub-trees (dense, static meshes), not
+    // the gallery root which also holds portal discs, labels, the fade
+    // sphere etc. that are low-poly / dynamic.
+    for (const imm of this.immersives) {
+      if (imm) xb.applyBVH?.(imm);
+    }
   }
 
   onSelectStart(event) {
