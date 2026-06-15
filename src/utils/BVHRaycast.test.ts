@@ -96,7 +96,7 @@ describe('BVHRaycast', () => {
     expect((skinned.geometry as any).boundsTree).toBeUndefined();
   });
 
-  it('applyBVH skips InstancedMesh subclasses (same prototype-override reasoning)', async () => {
+  it('applyBVH builds a boundsTree on InstancedMesh (its raycast does route through Mesh.prototype per-instance)', async () => {
     const root = new THREE.Group();
     const inst = new THREE.InstancedMesh(
       new THREE.BoxGeometry(),
@@ -106,6 +106,6 @@ describe('BVHRaycast', () => {
     root.add(inst);
     await applyBVH(root);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((inst.geometry as any).boundsTree).toBeUndefined();
+    expect((inst.geometry as any).boundsTree).toBeDefined();
   });
 });

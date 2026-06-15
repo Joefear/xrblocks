@@ -101,9 +101,16 @@ export async function enableAcceleratedRaycast(): Promise<boolean> {
  * for low-poly / UI / dynamic meshes. Don't apply globally to
  * `xb.core.scene`.
  *
- * Skips `THREE.SkinnedMesh` and `THREE.InstancedMesh` since both
- * override `.raycast()` on their own prototypes, so a BVH would never
- * be consulted for them.
+ * Skips `THREE.SkinnedMesh`: skinned meshes deform vertices on the GPU
+ * each frame, so a bounds tree built on the bind-pose geometry is wrong
+ * the moment the mesh animates. Three's `SkinnedMesh.raycast()` also
+ * overrides the patched `Mesh.prototype.raycast` and does its own CPU
+ * skinning, so the BVH would never be consulted anyway.
+ *
+ * `THREE.InstancedMesh` is NOT skipped: its `.raycast()` calls a
+ * shared internal `Mesh` per instance, which does route through the
+ * patched `Mesh.prototype.raycast`, so a BVH on the shared geometry
+ * accelerates every per-instance test.
  *
  * Async because it awaits the dynamic import of three-mesh-bvh. If the
  * module isn't available, this is a no-op. Idempotent across calls.
@@ -118,7 +125,6 @@ export async function applyBVH(
     if (
       obj instanceof THREE.Mesh &&
       !(obj instanceof THREE.SkinnedMesh) &&
-      !(obj instanceof THREE.InstancedMesh) &&
       obj.geometry
     ) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
