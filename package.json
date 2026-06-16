@@ -22,7 +22,8 @@
   },
   "files": [
     "build",
-    "skills"
+    "skills",
+    "src"
   ],
   "repository": {
     "type": "git",
