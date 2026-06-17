@@ -15,10 +15,10 @@ export const Backdrop = {
 };
 
 const BACKDROP_PRESETS = [
-  {mode: Backdrop.Gradient, a: '#1d2b53', b: '#7e2553'},
-  {mode: Backdrop.Gradient, a: '#0b486b', b: '#3b8686'},
-  {mode: Backdrop.Solid, a: '#00b140', b: '#00b140'},
-  {mode: Backdrop.Passthrough, a: '#000000', b: '#000000'},
+  {name: 'sunset', mode: Backdrop.Gradient, a: '#1d2b53', b: '#7e2553'},
+  {name: 'teal', mode: Backdrop.Gradient, a: '#0b486b', b: '#3b8686'},
+  {name: 'greenscreen', mode: Backdrop.Solid, a: '#00b140', b: '#00b140'},
+  {name: 'passthrough', mode: Backdrop.Passthrough, a: '#000000', b: '#000000'},
 ];
 
 const VERTEX_SHADER = /* glsl */ `
@@ -124,6 +124,10 @@ export class MagicWindow extends xb.Script {
     this.material.uniforms.uBackdrop.value = preset.mode;
     this.material.uniforms.uColorA.value.set(preset.a);
     this.material.uniforms.uColorB.value.set(preset.b);
+  }
+
+  get backdropName() {
+    return BACKDROP_PRESETS[this.backdropIndex].name;
   }
 
   update() {

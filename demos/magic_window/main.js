@@ -1,5 +1,6 @@
 import 'xrblocks/addons/simulator/SimulatorAddons.js';
 import * as xb from 'xrblocks';
+import {ControlPanel} from './ControlPanel.js';
 import {MagicWindow} from './MagicWindow.js';
 import {installWebcamFallback} from './WebcamFallback.js';
 
@@ -19,6 +20,7 @@ options.xrButton.showEnterSimulatorButton = true;
 function start() {
   const magicWindow = new MagicWindow();
   xb.add(magicWindow);
+  xb.add(new ControlPanel(magicWindow));
   xb.init(options).then(() => {
     installWebcamFallback(xb);
   });
