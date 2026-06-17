@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 
-import {Registry} from '../core/components/Registry';
 import {Script} from '../core/Script';
 import {WaitFrame} from '../core/components/WaitFrame';
 import {placeObjectAtIntersectionFacingTarget} from '../utils/ObjectPlacement';
@@ -27,7 +26,6 @@ export class World extends Script {
   static dependencies = {
     options: WorldOptions,
     camera: THREE.Camera,
-    registry: Registry,
     waitFrame: WaitFrame,
     timer: THREE.Timer,
   };
@@ -89,8 +87,6 @@ export class World extends Script {
   private waitFrame!: WaitFrame;
   private timer!: THREE.Timer;
 
-  private registry!: Registry;
-
   // Whether we need to initiate a room capture.
   private needsRoomCapture = false;
 
@@ -106,19 +102,16 @@ export class World extends Script {
   override async init({
     options,
     camera,
-    registry,
     waitFrame,
     timer,
   }: {
     options: WorldOptions;
     camera: THREE.Camera;
-    registry: Registry;
     waitFrame: WaitFrame;
     timer: THREE.Timer;
   }) {
     this.options = options;
     this.camera = camera;
-    this.registry = registry;
     this.waitFrame = waitFrame;
     this.timer = timer;
 
