@@ -459,10 +459,16 @@
             const stripQuotes = (k) => k.replace(/^['"]+|['"]+$/g, '');
             const normItem = (it) => {
               if (typeof it === 'string') {
-                try {
-                  it = JSON.parse(it);
-                } catch {
-                  return null;
+                const s = it.trim();
+                // Accept a bare label ("mug") or a JSON object string.
+                if (s.startsWith('{') || s.startsWith('[')) {
+                  try {
+                    it = JSON.parse(s);
+                  } catch {
+                    return null;
+                  }
+                } else {
+                  return s ? {text: s} : null;
                 }
               }
               if (!it || typeof it !== 'object') return null;
