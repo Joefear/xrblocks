@@ -516,8 +516,8 @@
             );
             await Promise.all([...embedTargets].map((t) => embed(t)));
             if (xrStatusText) {
-              const want = list.map((it) => it.text).join(',');
-              const got = detected.map((d) => d.label).join(',') || '(none)';
+              const want = list.map((it) => it.text).join(', ');
+              const got = detected.map((d) => d.label).join(', ') || '(none)';
               xrStatusText.setText(`want: ${want} | got: ${got}`);
             }
 
