@@ -51,10 +51,11 @@ export class GeminiManager extends xb.Script<GeminiManagerEventMap> {
   cameraHeight?: number;
 
   // What the live session streams to the model each frame:
+  //   'camera'     - raw passthrough frames from the device camera (default,
+  //                  matching the original startGeminiLive behavior)
   //   'screenshot' - the rendered scene (virtual content), optionally over the
   //                  camera image (see `overlayScreenshotOnCamera`)
-  //   'camera'     - raw passthrough frames from the device camera
-  captureMode: 'screenshot' | 'camera' = 'screenshot';
+  captureMode: 'screenshot' | 'camera' = 'camera';
   // In 'screenshot' mode, composite the virtual content over the camera image.
   overlayScreenshotOnCamera = true;
 
