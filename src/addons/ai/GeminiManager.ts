@@ -495,6 +495,11 @@ export class GeminiManager extends xb.Script<GeminiManagerEventMap> {
           .join('');
         if (text) options.onText?.(text);
 
+        // Audio Live sessions return the spoken reply as audio, so the text
+        // shows up under `outputTranscription` rather than `modelTurn.parts`.
+        const transcript = msg.serverContent?.outputTranscription?.text;
+        if (transcript) options.onText?.(transcript);
+
         const audioPart = msg.serverContent?.modelTurn?.parts?.find((p) =>
           p.inlineData?.mimeType?.startsWith('audio/')
         );
