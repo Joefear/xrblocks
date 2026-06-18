@@ -196,8 +196,10 @@ export class GeminiManager extends xb.Script<GeminiManagerEventMap> {
     model?: string
   ) {
     return new Promise<void>((resolve, reject) => {
+      let opened = false;
       this.ai.setLiveCallbacks({
         onopen: () => {
+          opened = true;
           resolve();
         },
         onmessage: (message: GoogleGenAITypes.LiveServerMessage) => {
@@ -213,6 +215,11 @@ export class GeminiManager extends xb.Script<GeminiManagerEventMap> {
           // session is closed by the server, not just via stopGeminiLive.
           this.cleanup();
           this.dispatchEvent({type: 'close'});
+          // If the session closed before it ever opened, the startup promise
+          // would otherwise hang forever; surface it as a failure.
+          if (!opened) {
+            reject(new Error('Live session closed before it opened'));
+          }
         },
       });
 
