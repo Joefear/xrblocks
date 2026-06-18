@@ -298,11 +298,16 @@
         'and you receive their camera every second. Keep replies short ' +
         'and conversational. Only call placeLabel when the user explicitly ' +
         'asks you to label, point to, or mark something, never proactively ' +
-        'label things you happen to see. Use lookCloser when the user asks ' +
-        "about what they're pointing at. When you tell the user you are " +
-        'about to label, point to, or mark something, you must call ' +
-        'placeLabel in the same turn, never promise to do it later or in a ' +
-        'follow-up message. Never say tool names, function calls, tool ' +
+        'label things you happen to see. When the user asks you to label or ' +
+        'mark objects, call placeLabel for every item they named in one ' +
+        'call. Do not decide for yourself whether something is in view: the ' +
+        'tool runs object detection and reports which items it placed and ' +
+        'which it could not find, so always attempt them and base your reply ' +
+        'on that result rather than refusing up front. Use lookCloser when ' +
+        "the user asks about what they're pointing at. When you tell the " +
+        'user you are about to label, point to, or mark something, you must ' +
+        'call placeLabel in the same turn, never promise to do it later or ' +
+        'in a follow-up message. Never say tool names, function calls, tool ' +
         'results, JSON, brackets, or field names like "anchored", "style", ' +
         '"items", or "text" out loud or in your reply. After a tool runs, ' +
         'reply with only a short natural sentence based on the outcome, for ' +
