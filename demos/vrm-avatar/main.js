@@ -5,7 +5,6 @@ import * as THREE from 'three';
 import * as xb from 'xrblocks';
 
 import {VRMAvatarScript} from './VRMAvatarScript.js';
-import {PerfHUD} from './PerfHUD.js';
 
 // ---------------------------------------------------------------------------
 // Asset URLs — swap these for your own VRM / FBX files.
@@ -56,13 +55,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       rotateLerp: 0.08,
     })
   );
-
-  // Debug perf overlay (FPS / draw calls / triangles): open with ?debug.
-  // This demo has no avatar optimizations, so it serves as the baseline to
-  // compare against demos/gemini_vrm_lip_sync.
-  if (new URLSearchParams(location.search).has('debug')) {
-    xb.add(new PerfHUD());
-  }
 
   const options = new xb.Options();
   // Depth mesh: used by VRMAvatarScript.onSelectEnd to pick a walk target on the
