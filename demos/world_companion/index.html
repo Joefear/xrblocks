@@ -500,6 +500,13 @@
             } catch (e) {
               console.warn('[placeLabel] detection threw', e);
             }
+            // The detector returns names with leading articles ("the chair"),
+            // which read badly as label text. Strip them.
+            const stripArticle = (s) =>
+              (s || '').replace(/^\s*(the|a|an)\s+/i, '').trim();
+            detected.forEach((d) => {
+              if (d && d.label) d.label = stripArticle(d.label);
+            });
 
             const embedTargets = new Set();
             list.forEach((it) => it?.text && embedTargets.add(it.text));
