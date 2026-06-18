@@ -262,6 +262,7 @@ export class MagicWindow extends xb.Script {
       this.maskTexture.image.width !== mask.width ||
       this.maskTexture.image.height !== mask.height
     ) {
+      this.maskTexture?.dispose();
       this.maskTexture = new THREE.DataTexture(
         mask.data,
         mask.width,
@@ -278,5 +279,16 @@ export class MagicWindow extends xb.Script {
       this.maskTexture.image.data = mask.data;
     }
     this.maskTexture.needsUpdate = true;
+  }
+
+  dispose() {
+    window.removeEventListener('keydown', this.onKeyDown_);
+    this.segmenter.dispose();
+    this.cameraTexture?.dispose();
+    this.maskTexture?.dispose();
+    this.plane.geometry.dispose();
+    this.windowFrame_.geometry.dispose();
+    this.windowFrame_.material.dispose();
+    this.material.dispose();
   }
 }
