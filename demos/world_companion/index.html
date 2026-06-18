@@ -14,8 +14,9 @@
     <script type="importmap">
       {
         "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/",
+          "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+          "three/": "https://cdn.jsdelivr.net/npm/three@0.184.0/",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/",
           "troika-three-text": "https://cdn.jsdelivr.net/gh/protectwise/troika@028b81cf308f0f22e5aa8e78196be56ec1997af5/packages/troika-three-text/src/index.js",
           "troika-three-utils": "https://cdn.jsdelivr.net/gh/protectwise/troika@v0.52.4/packages/troika-three-utils/src/index.js",
           "troika-worker-utils": "https://cdn.jsdelivr.net/gh/protectwise/troika@v0.52.4/packages/troika-worker-utils/src/index.js",
@@ -23,6 +24,12 @@
           "webgl-sdf-generator": "https://esm.sh/webgl-sdf-generator@1.1.1/es2022/webgl-sdf-generator.mjs",
           "lit": "https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js",
           "lit/": "https://esm.run/lit@3/",
+          "@pmndrs/uikit": "https://cdn.jsdelivr.net/npm/@pmndrs/uikit@1.0.64/dist/index.min.js",
+          "@pmndrs/uikit-pub-sub": "https://cdn.jsdelivr.net/npm/@pmndrs/uikit-pub-sub@1.0.64/dist/index.min.js",
+          "@pmndrs/msdfonts": "https://cdn.jsdelivr.net/npm/@pmndrs/msdfonts@1.0.64/dist/index.min.js",
+          "@preact/signals-core": "https://cdn.jsdelivr.net/npm/@preact/signals-core@1.12.1/dist/signals-core.mjs",
+          "yoga-layout/load": "https://cdn.jsdelivr.net/npm/yoga-layout@3.2.1/dist/src/load.js",
+          "uiblocks": "../../build/addons/uiblocks/src/index.js",
           "xrblocks": "../../build/xrblocks.js",
           "xrblocks/addons/": "../../build/addons/",
           "@google/genai": "https://cdn.jsdelivr.net/npm/@google/genai/+esm",
@@ -261,6 +268,13 @@
       import * as xb from 'xrblocks';
       import 'xrblocks/addons/simulator/SimulatorAddons.js';
       import {GeminiManager} from 'xrblocks/addons/ai/GeminiManager.js';
+      import {
+        ManipulationBehavior,
+        UICore,
+        UIIcon,
+        UIPanel,
+        UIText,
+      } from 'uiblocks';
       import {Text} from 'troika-three-text';
       import {marked} from 'marked';
       import DOMPurify from 'dompurify';
@@ -272,12 +286,23 @@
       const statusEl = document.getElementById('status');
 
       const labels = new THREE.Group();
-      let session = null;
       // The Gemini Live + camera-streaming session driver (addons/ai). Created
       // and registered before xb.init so its init() can wire up ai + camera.
       let geminiManager = null;
       let turns = [];
       let xrStatusText = null;
+
+      // System instruction / persona handed to the Live session on start.
+      const COMPANION_PROMPT =
+        'You are a helpful AR companion. The user is wearing a headset ' +
+        'and you receive their camera every second. Keep replies short ' +
+        'and conversational. Only call placeLabel when the user explicitly ' +
+        'asks you to label, point to, or mark something, never proactively ' +
+        'label things you happen to see. Use lookCloser when the user asks ' +
+        "about what they're pointing at. When you tell the user you are " +
+        'about to label, point to, or mark something, you must call ' +
+        'placeLabel in the same turn, never promise to do it later or in a ' +
+        'follow-up message.';
 
       const embedCache = new Map();
       const SIM_THRESHOLD = 0.7;
@@ -328,7 +353,7 @@
 
       function setStatus(s) {
         statusEl.textContent = s;
-        if (xrStatusText) xrStatusText.text = s;
+        if (xrStatusText) xrStatusText.setText(s.replace(/…/g, '...'));
       }
       function renderTranscript() {
         transcriptEl.innerHTML = DOMPurify.sanitize(
@@ -644,7 +669,7 @@
             "Returns the object name, or 'nothing' if the reticle is in empty space.",
           onTriggered: async () => {
             try {
-              const target = xb.core.user.getReticleTarget();
+              const target = xb.core.user.getReticleTarget(0);
               return {
                 success: true,
                 data: {target: target?.name || target?.type || 'nothing'},
@@ -662,7 +687,7 @@
       function placeMarker(position, text, style, batchKey) {
         // Dedupe: same physical object should only get one label. Match by
         // text (exact, contains, or contained), then by proximity. Skip
-        // labels added in the same batch — caller asked for multiple
+        // labels added in the same batch, caller asked for multiple
         // distinct items, so don't merge them with each other.
         const norm = (s) => (s || '').toLowerCase().trim();
         const key = norm(text);
@@ -809,7 +834,7 @@
       requestAnimationFrame(animateMarkers);
 
       async function start() {
-        if (session) return;
+        if (geminiManager.isAIRunning) return;
         startBtn.disabled = true;
         setStatus('opening session...');
         turns = [];
@@ -824,35 +849,17 @@
             });
             labels.remove(c);
           }
-          await xb.core.sound.enableAudio({streamToAI: true});
-          session = await geminiManager.streamScene(
-            'You are a helpful AR companion. The user is wearing a headset ' +
-              'and you receive their camera every second. Keep replies short ' +
-              'and conversational. Only call placeLabel when the user ' +
-              'explicitly asks you to label, point to, or mark something — ' +
-              'never proactively label things you happen to see. Use ' +
-              "lookCloser when the user asks about what they're pointing at. " +
-              'When you tell the user you are about to label, point to, or ' +
-              'mark something, you must call placeLabel in the same turn — ' +
-              'never promise to do it later or in a follow-up message.',
-            {
-              fps: 1,
-              tools: makeTools(),
-              onOpen: () => setStatus('listening'),
-              onText: (t) => appendTurn('model', t),
-              onInputText: (t) => appendTurn('user', t),
-              onTurnComplete: () => finalizeTurns(),
-              onError: (e) => {
-                setStatus('error: ' + e.message);
-                console.error(e);
-              },
-              onClose: () => {
-                setStatus('closed');
-                startBtn.disabled = false;
-                stopBtn.disabled = true;
-              },
-            }
-          );
+          geminiManager.tools = makeTools();
+          // Downscale the camera frames sent to the model to keep bandwidth
+          // and latency low; the companion only needs a rough view.
+          geminiManager.cameraWidth = 640;
+          geminiManager.cameraHeight = 480;
+          await geminiManager.startGeminiLive({
+            liveParams: {
+              systemInstruction: {parts: [{text: COMPANION_PROMPT}]},
+            },
+          });
+          setStatus('listening');
           stopBtn.disabled = false;
         } catch (err) {
           setStatus('error: ' + err.message);
@@ -862,14 +869,11 @@
       }
 
       async function stop() {
-        if (!session) return;
         stopBtn.disabled = true;
         setStatus('stopping...');
         try {
-          await session?.stop();
-          await xb.core.sound.disableAudio();
+          await geminiManager.stopGeminiLive();
         } finally {
-          session = null;
           startBtn.disabled = false;
           setStatus('idle');
         }
@@ -906,53 +910,136 @@
       options.setAppTitle('World Companion');
 
       geminiManager = new GeminiManager();
+      // The companion replies in audio; the spoken text + the user's own
+      // recognized speech come back as transcription events, which we render
+      // as a two-sided transcript. turnComplete separates exchanges.
+      geminiManager.addEventListener('outputTranscription', (e) =>
+        appendTurn('model', e.message)
+      );
+      geminiManager.addEventListener('inputTranscription', (e) =>
+        appendTurn('user', e.message)
+      );
+      geminiManager.addEventListener('turnComplete', () => finalizeTurns());
       xb.add(geminiManager);
+
+      // Immersive control panel built with uiblocks (preferred over the older
+      // xb.SpatialPanel). Mirrors the DOM controls and shows live status. An
+      // xb.Script so UICore gets its lifecycle hooks; draggable so users can
+      // place it anywhere.
+      class WorldCompanionPanel extends xb.Script {
+        init() {
+          this.uiCore = new UICore(this);
+          const card = this.uiCore.createCard({
+            name: 'WorldCompanionControlCard',
+            position: new THREE.Vector3(0, 1.3, -0.8),
+            sizeX: 0.56,
+            sizeY: 0.2,
+          });
+          const panel = new UIPanel({
+            width: '100%',
+            height: '100%',
+            fillColor: 'rgba(10, 12, 16, 0.94)',
+            strokeWidth: 2,
+            strokeColor: 'rgba(126, 231, 135, 0.45)',
+            cornerRadius: 18,
+            padding: 14,
+            flexDirection: 'column',
+            gap: 8,
+            alignItems: 'stretch',
+            justifyContent: 'center',
+          });
+          const titleText = new UIText('WORLD COMPANION', {
+            fontSize: 18,
+            fontWeight: 'bold',
+            color: '#7ee787',
+            textAlign: 'center',
+            width: '100%',
+          });
+          xrStatusText = new UIText('idle', {
+            fontSize: 12,
+            color: '#8b97a7',
+            textAlign: 'center',
+            width: '100%',
+          });
+          const separator = new UIPanel({
+            width: '100%',
+            height: 1,
+            fillColor: 'rgba(255, 255, 255, 0.10)',
+          });
+          const buttonRow = new UIPanel({
+            width: '100%',
+            flexDirection: 'row',
+            gap: 10,
+            justifyContent: 'center',
+            alignItems: 'center',
+          });
+          buttonRow.add(this.makeXrButton('mic', 'talk', start));
+          buttonRow.add(this.makeXrButton('stop', 'stop', stop));
+          buttonRow.add(
+            this.makeXrButton('delete_sweep', 'clear', clearLabels)
+          );
+          panel.add(titleText);
+          panel.add(xrStatusText);
+          panel.add(separator);
+          panel.add(buttonRow);
+          card.add(panel);
+          card.addBehavior(
+            new ManipulationBehavior({draggable: true, faceCamera: true})
+          );
+        }
+
+        // Icon + caption button mirroring a DOM control. renderOrder/depthTest
+        // pin the label and icon on top of the fill so they read from every
+        // angle (the uiblocks button fill otherwise draws over nested text).
+        makeXrButton(iconName, label, onClick) {
+          const idle = '#2a2a2a';
+          const hover = '#3a3a3a';
+          const btn = new UIPanel({
+            paddingTop: 8,
+            paddingBottom: 8,
+            paddingLeft: 16,
+            paddingRight: 16,
+            cornerRadius: 12,
+            fillColor: idle,
+            strokeWidth: 1,
+            strokeColor: '#444444',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            renderOrder: 10,
+            onHoverEnter: () => btn.setFillColor(hover),
+            onHoverExit: () => btn.setFillColor(idle),
+            onClick: () => {
+              btn.setFillColor('#4796e3');
+              setTimeout(() => btn.setFillColor(idle), 180);
+              onClick();
+            },
+          });
+          btn.add(
+            new UIIcon(iconName, {
+              color: 'white',
+              width: 22,
+              height: 22,
+              renderOrder: 12,
+            })
+          );
+          btn.add(
+            new UIText(label, {
+              fontSize: 14,
+              color: '#ffffff',
+              fontWeight: 'bold',
+              depthTest: false,
+              renderOrder: 100,
+            })
+          );
+          return btn;
+        }
+      }
+      xb.add(new WorldCompanionPanel());
 
       xb.init(options);
       xb.core.scene.add(labels);
-
-      const xrPanel = new xb.SpatialPanel({
-        width: 0.3,
-        height: 0.12,
-        backgroundColor: '#000000d9',
-        showEdge: false,
-      });
-      xrPanel.position.set(0, 1.3, -0.7);
-      xb.core.user.add(xrPanel);
-
-      const xrGrid = xrPanel.addGrid();
-      const statusRow = xrGrid.addRow({weight: 0.3});
-      const ctrlRow = xrGrid.addRow({weight: 0.7});
-
-      xrStatusText = statusRow.addText({
-        text: 'idle',
-        fontColor: '#cfcfcf',
-        fontSize: 0.13,
-        textAlign: 'center',
-      });
-
-      const xrStartBtn = ctrlRow.addCol({weight: 1}).addIconButton({
-        text: 'mic',
-        fontSize: 0.6,
-        fontColor: '#ffffff',
-      });
-      xrStartBtn.onTriggered = start;
-
-      const xrStopBtn = ctrlRow.addCol({weight: 1}).addIconButton({
-        text: 'stop',
-        fontSize: 0.6,
-        fontColor: '#ffffff',
-      });
-      xrStopBtn.onTriggered = stop;
-
-      const xrClearBtn = ctrlRow.addCol({weight: 1}).addIconButton({
-        text: 'delete_sweep',
-        fontSize: 0.5,
-        fontColor: '#ffffff',
-      });
-      xrClearBtn.onTriggered = clearLabels;
-
-      xrPanel.updateLayouts();
     </script>
   </body>
 </html>
