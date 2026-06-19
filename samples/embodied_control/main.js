@@ -37,7 +37,7 @@ const ACTION_GROUPS = [
         label: 'Teleport to Cube',
         isHighLevel: true,
         run: () => {
-          const cube = xb.core.scene.getObjectByName(
+          const cube = xb.scene.getObjectByName(
             'Embodied Control Draggable Cube'
           );
           return embodied.teleportTo(cube, {distance: 1.2});
@@ -47,7 +47,7 @@ const ACTION_GROUPS = [
         label: 'Look at Cube',
         isHighLevel: true,
         run: () => {
-          const cube = xb.core.scene.getObjectByName(
+          const cube = xb.scene.getObjectByName(
             'Embodied Control Draggable Cube'
           );
           return embodied.lookAtTarget(cube, {velocity: 1.5});
@@ -92,7 +92,7 @@ function handActions(hand) {
       label: 'Point to Cube',
       isHighLevel: true,
       run: () => {
-        const cube = xb.core.scene.getObjectByName(
+        const cube = xb.scene.getObjectByName(
           'Embodied Control Draggable Cube'
         );
         return embodied.pointTo(handIndex, cube, {velocity: 1.5});
@@ -102,7 +102,7 @@ function handActions(hand) {
       label: 'Reach to Cube',
       isHighLevel: true,
       run: () => {
-        const cube = xb.core.scene.getObjectByName(
+        const cube = xb.scene.getObjectByName(
           'Embodied Control Draggable Cube'
         );
         return embodied.reachTo(handIndex, cube, {velocity: 0.5});
