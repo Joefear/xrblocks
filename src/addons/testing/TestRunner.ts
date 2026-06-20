@@ -10,7 +10,6 @@ import {
 import {
   EmbodiedControl,
   type EmbodiedControlOptions,
-  DEFAULT_EMBODIED_CONTROL_OPTIONS,
 } from '../embodied-control';
 export interface TestRunnerConfig {
   /** Scripts to load into the test scene. */
@@ -26,6 +25,7 @@ export class TestRunner {
   readonly embodiedControl: EmbodiedControl;
   readonly scene: THREE.Scene;
   readonly camera: THREE.Camera;
+  readonly actions: EmbodiedControl;
 
   private caughtErrors: Error[] = [];
   private boundExceptionListener: (event: {
@@ -58,6 +58,26 @@ export class TestRunner {
       ScriptsManagerEventType.EXCEPTION,
       this.boundExceptionListener
     );
+
+    // Set up the dynamic actions proxy.
+    this.actions = new Proxy(this.embodiedControl, {
+      get: (target, prop) => {
+        const val = (target as unknown as Record<string | symbol, unknown>)[
+          prop
+        ];
+        if (typeof val === 'function') {
+          const fn = val as (...args: unknown[]) => unknown;
+          return async (...args: unknown[]) => {
+            const result = fn.apply(target, args);
+            if (result instanceof Promise) {
+              await result;
+            }
+            this.checkErrors();
+          };
+        }
+        return val;
+      },
+    }) as unknown as EmbodiedControl;
   }
 
   static async create(config: TestRunnerConfig = {}): Promise<TestRunner> {
@@ -122,131 +142,6 @@ export class TestRunner {
     const runner = new TestRunner(core, embodiedControl);
     runner.checkErrors();
     return runner;
-  }
-
-  /**
-   * Steps the frame loop forward by the specified duration.
-   */
-  async step(
-    durationMs = DEFAULT_EMBODIED_CONTROL_OPTIONS.tickMs
-  ): Promise<void> {
-    return this.runAction(
-      this.embodiedControl.step({
-        control: {},
-        durationMs,
-      })
-    );
-  }
-
-  /**
-   * Simulates camera movement.
-   * @param direction - [strafe, rise, forward] relative to camera orientation.
-   */
-  async move(
-    direction: [number, number, number],
-    options?: {durationMs?: number}
-  ): Promise<void> {
-    return this.runAction(
-      this.embodiedControl.step({
-        control: {locomotion: {move: direction}},
-        durationMs: options?.durationMs,
-      })
-    );
-  }
-
-  /**
-   * Simulates camera rotation in degrees [pitch, yaw, roll].
-   */
-  async rotate(
-    degrees: [number, number, number],
-    options?: {durationMs?: number}
-  ): Promise<void> {
-    return this.runAction(
-      this.embodiedControl.step({
-        control: {locomotion: {rotate: degrees}},
-        durationMs: options?.durationMs,
-      })
-    );
-  }
-
-  /**
-   * Snaps or rotates the camera to look at the target.
-   */
-  async lookAt(
-    target: THREE.Object3D | THREE.Vector3 | [number, number, number],
-    options?: {velocity?: number}
-  ): Promise<void> {
-    return this.runAction(this.embodiedControl.lookAtTarget(target, options));
-  }
-
-  /**
-   * Teleports the camera to the target position.
-   */
-  async teleportTo(
-    target: THREE.Object3D | THREE.Vector3 | [number, number, number],
-    options?: {
-      distance?: number;
-      faceTarget?: boolean;
-      snapToGround?: boolean;
-    }
-  ): Promise<void> {
-    return this.runAction(this.embodiedControl.teleportTo(target, options));
-  }
-
-  /**
-   * Programmatically clicks/pinches with a specific hand.
-   */
-  async click(handIndex = 1, options?: {durationMs?: number}): Promise<void> {
-    return this.runAction(this.embodiedControl.click(handIndex, options));
-  }
-
-  /**
-   * Initiates/continues a pinch on the specified hand.
-   */
-  async pinch(
-    handIndex: 0 | 1,
-    active: boolean,
-    options?: {durationMs?: number}
-  ): Promise<void> {
-    const handControl = active ? {selectStart: true} : {selectEnd: true};
-    return this.runAction(
-      this.embodiedControl.step({
-        control:
-          handIndex === 0 ? {leftHand: handControl} : {rightHand: handControl},
-        durationMs: options?.durationMs,
-      })
-    );
-  }
-
-  /**
-   * Moves a hand to reach a target.
-   */
-  async reachTo(
-    handIndex: 0 | 1,
-    target: THREE.Vector3 | [number, number, number] | THREE.Object3D,
-    options?: {velocity?: number}
-  ): Promise<void> {
-    return this.runAction(
-      this.embodiedControl.reachTo(handIndex, target, options)
-    );
-  }
-
-  /**
-   * Points a hand at a target.
-   */
-  async pointTo(
-    handIndex: 0 | 1,
-    target: THREE.Object3D | THREE.Vector3 | [number, number, number],
-    options?: {velocity?: number}
-  ): Promise<void> {
-    return this.runAction(
-      this.embodiedControl.pointTo(handIndex, target, options)
-    );
-  }
-
-  private async runAction(action: Promise<unknown>): Promise<void> {
-    await action;
-    this.checkErrors();
   }
 
   /**

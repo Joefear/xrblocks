@@ -34,11 +34,11 @@ class GrabbableScript extends Script {
   grabbedByHand: number | null = null;
 
   override onObjectSelectStart(event: SelectEvent) {
-    // Determine which controller triggered the selection
+    // Determine which controller triggered the selection.
     const controller = event.target as unknown as {userData: {id: number}};
     const index = controller.userData.id;
     this.grabbedByHand = index;
-    return true; // Mark as handled
+    return true;
   }
 
   override onObjectSelectEnd(_event: SelectEvent) {
@@ -68,8 +68,7 @@ describe('TestRunner functional examples', () => {
 
     expect(script.rotation.y).toBe(0);
 
-    // Step 1 frame (~16ms)
-    await runner.step(16.67);
+    await runner.actions.step({durationMs: 16.67});
     expect(script.rotation.y).toBeGreaterThan(0);
 
     await runner.destroy();
@@ -84,13 +83,12 @@ describe('TestRunner functional examples', () => {
       scripts: [hoverScript],
     });
 
-    // Initially pointing down/away, not hovered
-    await runner.step(100);
+    // Initially pointing down/away, not hovered.
+    await runner.actions.step({durationMs: 100});
     expect(hoverScript.isHovered).toBe(false);
 
-    // Point right hand (index 1) directly at the target object
-    await runner.pointTo(1, hoverScript);
-    await runner.step(100);
+    await runner.actions.pointTo(1, hoverScript);
+    await runner.actions.step({durationMs: 100});
 
     expect(hoverScript.isHovered).toBe(true);
 
@@ -106,16 +104,19 @@ describe('TestRunner functional examples', () => {
       scripts: [grabbable],
     });
 
-    // Point and pinch (grab) with the right hand (index 1)
-    await runner.pointTo(1, grabbable);
-    await runner.pinch(1, true);
-    await runner.step(100);
+    await runner.actions.pointTo(1, grabbable);
+    await runner.actions.step({
+      control: {rightHand: {selectStart: true}},
+      durationMs: 100,
+    });
 
     expect(grabbable.grabbedByHand).toBe(1);
 
     // Release pinch
-    await runner.pinch(1, false);
-    await runner.step(100);
+    await runner.actions.step({
+      control: {rightHand: {selectEnd: true}},
+      durationMs: 100,
+    });
 
     expect(grabbable.grabbedByHand).toBeNull();
 
@@ -125,7 +126,7 @@ describe('TestRunner functional examples', () => {
   it('should run Example 4: UI Button Clicking & Game Logic', async () => {
     const game = new GameController();
 
-    // Create button that triggers spawning on game controller
+    // Create button that triggers spawning on game controller.
     const button = new TextButton({
       text: 'Spawn Item',
     });
@@ -140,13 +141,11 @@ describe('TestRunner functional examples', () => {
 
     expect(game.score).toBe(0);
 
-    // Point right hand (index 1) at button and click it
-    await runner.pointTo(1, button);
+    // Point right hand (index 1) at button and click it.
+    await runner.actions.pointTo(1, button);
     expect(game.score).toBe(0);
-    await runner.click(1); // Click does pinch and release over time
-
-    // Step virtual time to process click frames
-    await runner.step(250);
+    await runner.actions.click(1);
+    await runner.actions.step({durationMs: 250});
 
     expect(game.score).toBe(1);
     expect(game.spawnedItems.size).toBe(1);
@@ -163,7 +162,7 @@ describe('TestRunner functional examples', () => {
       private estimator = new WebXRHandPoseEstimator(core.user);
 
       override update() {
-        const context = this.estimator.getHandContext(1); // 1 is right hand
+        const context = this.estimator.getHandContext(1);
         if (!context) return;
 
         const scores = this.recognizer.recognize(context);
@@ -189,17 +188,17 @@ describe('TestRunner functional examples', () => {
 
     expect(script.pinchDetected).toBe(false);
 
-    // Trigger a pinch using simulated embodied motions
-    await runner.pinch(1, true);
-    await runner.step(400); // Wait for the simulator hand to lerp and trigger the gesture
-
-    // Expect the pinch to be detected by the gesture logger
+    await runner.actions.step({
+      control: {rightHand: {selectStart: true}},
+      durationMs: 400,
+    });
     expect(script.pinchDetected).toBe(true);
     expect(script.confidence).toBeGreaterThan(0.6);
 
-    // Release pinch
-    await runner.pinch(1, false);
-    await runner.step(250);
+    await runner.actions.step({
+      control: {rightHand: {selectEnd: true}},
+      durationMs: 250,
+    });
 
     expect(script.pinchDetected).toBe(false);
 
