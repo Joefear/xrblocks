@@ -31,11 +31,12 @@ function createDetectedFace(faceId: number) {
 describe('FaceRecognizer Multi-Client API', () => {
   let recognizer: FaceRecognizer;
   let mockBackend: {run: ReturnType<typeof vi.fn>};
+  let options: WorldOptions;
 
   beforeEach(() => {
     vi.restoreAllMocks();
 
-    const options = new WorldOptions();
+    options = new WorldOptions();
     options.faces.enable();
     const deviceCamera = {} as unknown as XRDeviceCamera;
     const depth = {
@@ -91,6 +92,35 @@ describe('FaceRecognizer Multi-Client API', () => {
       .currentDetectionPromise;
     expect(promise2).not.toBeNull();
     await promise2;
+  });
+
+  it('respects pollingIntervalMs for continuous detection', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    options.faces.pollingIntervalMs = 100;
+
+    recognizer.start({});
+    await (recognizer as unknown as PrivateFaceRecognizer)
+      .currentDetectionPromise;
+
+    recognizer.update();
+    expect(
+      (recognizer as unknown as PrivateFaceRecognizer).currentDetectionPromise
+    ).toBeNull();
+
+    now = 1099;
+    recognizer.update();
+    expect(
+      (recognizer as unknown as PrivateFaceRecognizer).currentDetectionPromise
+    ).toBeNull();
+
+    now = 1100;
+    recognizer.update();
+    const promise = (recognizer as unknown as PrivateFaceRecognizer)
+      .currentDetectionPromise;
+    expect(promise).not.toBeNull();
+    await promise;
+    expect(mockBackend.run).toHaveBeenCalledTimes(2);
   });
 
   it('stops continuous detection when all clients stop', async () => {

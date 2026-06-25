@@ -66,6 +66,7 @@ export class ObjectDetector extends Script {
   private activeClients = new Set<object>();
   private currentDetectionPromise: Promise<DetectedObject<unknown>[]> | null =
     null;
+  private lastContinuousDetectionStartedAtMs = -Infinity;
 
   private _debugVisualsGroup?: THREE.Group;
 
@@ -165,15 +166,27 @@ export class ObjectDetector extends Script {
    * ensures the continuous object detection is running.
    */
   override update() {
-    if (this.activeClients.size > 0 && !this.currentDetectionPromise) {
-      this.runContinuousDetection();
+    if (this.activeClients.size === 0 || this.currentDetectionPromise) {
+      return;
     }
+
+    const pollingIntervalMs = this.options.objects.pollingIntervalMs;
+    if (
+      pollingIntervalMs > 0 &&
+      performance.now() - this.lastContinuousDetectionStartedAtMs <
+        pollingIntervalMs
+    ) {
+      return;
+    }
+
+    this.runContinuousDetection();
   }
 
   private runContinuousDetection() {
     if (this.currentDetectionPromise) {
       return;
     }
+    this.lastContinuousDetectionStartedAtMs = performance.now();
     this.currentDetectionPromise = this.runDetectionInternal()
       .then((results) => {
         this.detectedObjects = results;

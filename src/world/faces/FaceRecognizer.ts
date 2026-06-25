@@ -41,6 +41,7 @@ export class FaceRecognizer extends Script {
   private _detectorBackends = new Map<string, Promise<BaseFaceBackend>>();
   private activeClients = new Set<object>();
   private currentDetectionPromise: Promise<DetectedFace[]> | null = null;
+  private lastContinuousDetectionStartedAtMs = -Infinity;
 
   /**
    * The latest detected faces from continuous detection.
@@ -105,15 +106,27 @@ export class FaceRecognizer extends Script {
    * ensures the continuous face detection is running.
    */
   override update() {
-    if (this.activeClients.size > 0 && !this.currentDetectionPromise) {
-      this.runContinuousDetection();
+    if (this.activeClients.size === 0 || this.currentDetectionPromise) {
+      return;
     }
+
+    const pollingIntervalMs = this.options.faces.pollingIntervalMs;
+    if (
+      pollingIntervalMs > 0 &&
+      performance.now() - this.lastContinuousDetectionStartedAtMs <
+        pollingIntervalMs
+    ) {
+      return;
+    }
+
+    this.runContinuousDetection();
   }
 
   private runContinuousDetection() {
     if (this.currentDetectionPromise) {
       return;
     }
+    this.lastContinuousDetectionStartedAtMs = performance.now();
     this.currentDetectionPromise = this.runDetectionInternal()
       .then((results) => {
         this.detectedFaces = results;

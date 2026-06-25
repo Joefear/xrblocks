@@ -34,11 +34,12 @@ function createDetectedObject(label: string) {
 describe('ObjectDetector Multi-Client API', () => {
   let detector: ObjectDetector;
   let mockBackend: {run: ReturnType<typeof vi.fn>};
+  let options: WorldOptions;
 
   beforeEach(() => {
     vi.restoreAllMocks();
 
-    const options = new WorldOptions();
+    options = new WorldOptions();
     options.objects.enable();
     const ai = {} as unknown as AI;
     const aiOptions = {} as unknown as AIOptions;
@@ -99,6 +100,35 @@ describe('ObjectDetector Multi-Client API', () => {
       .currentDetectionPromise;
     expect(promise2).not.toBeNull();
     await promise2;
+  });
+
+  it('respects pollingIntervalMs for continuous detection', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    options.objects.pollingIntervalMs = 100;
+
+    detector.start({});
+    await (detector as unknown as PrivateObjectDetector)
+      .currentDetectionPromise;
+
+    detector.update();
+    expect(
+      (detector as unknown as PrivateObjectDetector).currentDetectionPromise
+    ).toBeNull();
+
+    now = 1099;
+    detector.update();
+    expect(
+      (detector as unknown as PrivateObjectDetector).currentDetectionPromise
+    ).toBeNull();
+
+    now = 1100;
+    detector.update();
+    const promise = (detector as unknown as PrivateObjectDetector)
+      .currentDetectionPromise;
+    expect(promise).not.toBeNull();
+    await promise;
+    expect(mockBackend.run).toHaveBeenCalledTimes(2);
   });
 
   it('stops continuous detection when all clients stop', async () => {
