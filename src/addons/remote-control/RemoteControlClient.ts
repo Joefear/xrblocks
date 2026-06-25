@@ -1,5 +1,6 @@
 import {
   createHello,
+  REMOTE_CONTROL_DEFAULT_SESSION_ID,
   isRemoteControlResponse,
   parseRemoteControlMessage,
   type RemoteControlCallToolRequest,
@@ -28,6 +29,7 @@ type PendingRequest = {
 
 export type RemoteControlClientOptions = {
   url?: string;
+  sessionId?: string;
   WebSocketConstructor?: typeof WebSocket;
 };
 
@@ -44,14 +46,17 @@ export class RemoteControlClient {
   private pageReady = false;
   private waiters: Array<() => void> = [];
   private readonly url: string;
+  private readonly sessionId: string;
   private readonly WebSocketConstructor: typeof WebSocket;
 
   constructor(options: string | RemoteControlClientOptions = {}) {
     if (typeof options === 'string') {
       this.url = options;
+      this.sessionId = REMOTE_CONTROL_DEFAULT_SESSION_ID;
       this.WebSocketConstructor = WebSocket;
     } else {
       this.url = options.url ?? 'ws://127.0.0.1:8791';
+      this.sessionId = options.sessionId ?? REMOTE_CONTROL_DEFAULT_SESSION_ID;
       this.WebSocketConstructor = options.WebSocketConstructor ?? WebSocket;
     }
   }
@@ -183,7 +188,7 @@ export class RemoteControlClient {
   }
 
   private onOpen = () => {
-    this.ws?.send(JSON.stringify(createHello('client')));
+    this.ws?.send(JSON.stringify(createHello('client', this.sessionId)));
   };
 
   private onMessage = (event: MessageEvent) => {

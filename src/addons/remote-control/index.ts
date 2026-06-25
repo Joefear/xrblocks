@@ -29,6 +29,7 @@ export type {
 } from './built-in-tools';
 export {
   REMOTE_CONTROL_CLIENT_NAME,
+  REMOTE_CONTROL_DEFAULT_SESSION_ID,
   REMOTE_CONTROL_PROTOCOL_VERSION,
   createHello,
   isRemoteControlRequest,

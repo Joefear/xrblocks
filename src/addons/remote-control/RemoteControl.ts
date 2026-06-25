@@ -100,6 +100,7 @@ export class RemoteControl extends Script {
     this.transport = new WebSocketRemoteControlTransport(
       {
         url: this.options.url,
+        sessionId: this.options.sessionId,
         reconnect: this.options.reconnect,
         reconnectDelayMs: this.options.reconnectDelayMs,
       },

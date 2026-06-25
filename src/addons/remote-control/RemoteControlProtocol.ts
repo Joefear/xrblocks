@@ -1,5 +1,6 @@
 export const REMOTE_CONTROL_PROTOCOL_VERSION = 1;
 export const REMOTE_CONTROL_CLIENT_NAME = 'xrblocks-remote-control';
+export const REMOTE_CONTROL_DEFAULT_SESSION_ID = 'default';
 
 export type RemoteControlRole = 'simulator' | 'client';
 
@@ -20,6 +21,7 @@ export type RemoteControlToolHandler = (
 export type RemoteControlHelloMessage = {
   type: 'hello';
   role: RemoteControlRole;
+  sessionId?: string;
   protocolVersion: number;
   client?: typeof REMOTE_CONTROL_CLIENT_NAME;
   capabilities?: {
@@ -72,11 +74,13 @@ export type RemoteControlOutgoingMessage =
   | RemoteControlSimulatorReadyMessage;
 
 export function createHello(
-  role: RemoteControlRole = 'simulator'
+  role: RemoteControlRole = 'simulator',
+  sessionId: string = REMOTE_CONTROL_DEFAULT_SESSION_ID
 ): RemoteControlHelloMessage {
   return {
     type: 'hello',
     role,
+    sessionId,
     protocolVersion: REMOTE_CONTROL_PROTOCOL_VERSION,
     client: REMOTE_CONTROL_CLIENT_NAME,
     capabilities: {

@@ -20,14 +20,14 @@ const wss = new WebSocketServer({
   maxPayload: 4 * 1024 * 1024,
 });
 
-let simulator = null;
-const clients = new Set();
-const pending = new Map();
+const DEFAULT_SESSION_ID = 'default';
+const sessions = new Map();
 
 console.log(`[remote-control-relay] listening on ws://${HOST}:${PORT}`);
 
 wss.on('connection', (ws) => {
   ws.role = null;
+  ws.sessionId = DEFAULT_SESSION_ID;
   ws.isAlive = true;
 
   ws.on('pong', () => {
@@ -56,16 +56,21 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.type === 'response') {
-      const client = pending.get(msg.id);
+      const session = getSession(ws.sessionId);
+      const client = session.pending.get(msg.id);
       if (client) {
-        pending.delete(msg.id);
+        session.pending.delete(msg.id);
         send(client, msg);
       }
       return;
     }
 
     if (ws.role === 'client') {
-      if (!simulator || simulator.readyState !== simulator.OPEN) {
+      const session = getSession(ws.sessionId);
+      if (
+        !session.simulator ||
+        session.simulator.readyState !== session.simulator.OPEN
+      ) {
         send(ws, {
           type: 'response',
           id: msg.id ?? '',
@@ -77,23 +82,30 @@ wss.on('connection', (ws) => {
         });
         return;
       }
-      if (typeof msg.id === 'string') pending.set(msg.id, ws);
-      send(simulator, msg);
+      if (typeof msg.id === 'string') session.pending.set(msg.id, ws);
+      send(session.simulator, msg);
     }
   });
 
   ws.on('close', () => {
-    if (ws.role === 'simulator' && simulator === ws) {
-      simulator = null;
-      for (const client of clients) {
+    const session = getSession(ws.sessionId);
+    if (ws.role === 'simulator' && session.simulator === ws) {
+      session.simulator = null;
+      rejectPending(
+        session,
+        'simulator_disconnected',
+        'Simulator disconnected before responding.'
+      );
+      for (const client of session.clients) {
         send(client, {type: 'simulatorDisconnected'});
       }
     } else if (ws.role === 'client') {
-      clients.delete(ws);
-      for (const [id, client] of pending) {
-        if (client === ws) pending.delete(id);
+      session.clients.delete(ws);
+      for (const [id, client] of session.pending) {
+        if (client === ws) session.pending.delete(id);
       }
     }
+    deleteSessionIfEmpty(ws.sessionId);
   });
 });
 
@@ -117,21 +129,89 @@ setInterval(() => {
 }, 15000);
 
 function handleHello(ws, msg) {
+  const previousSession = getSession(ws.sessionId);
+  if (ws.role === 'client') {
+    previousSession.clients.delete(ws);
+  }
+  if (ws.role === 'simulator' && previousSession.simulator === ws) {
+    previousSession.simulator = null;
+  }
+  deleteSessionIfEmpty(ws.sessionId);
+
+  ws.sessionId = normalizeSessionId(msg.sessionId);
+  const session = getSession(ws.sessionId);
+
   if (msg.role === 'simulator') {
-    simulator = ws;
+    if (session.simulator && session.simulator !== ws) {
+      try {
+        session.simulator.close(4000, 'Replaced by another simulator.');
+      } catch {
+        // ignore
+      }
+    }
+    session.simulator = ws;
     ws.role = 'simulator';
-    send(ws, {type: 'simulatorReady'});
-    for (const client of clients) send(client, {type: 'simulatorReady'});
+    for (const client of session.clients) {
+      send(client, {type: 'simulatorReady'});
+    }
     return;
   }
 
   if (msg.role === 'client') {
     ws.role = 'client';
-    clients.add(ws);
-    if (simulator && simulator.readyState === simulator.OPEN) {
+    session.clients.add(ws);
+    if (
+      session.simulator &&
+      session.simulator.readyState === session.simulator.OPEN
+    ) {
       send(ws, {type: 'simulatorReady'});
     }
   }
+}
+
+function normalizeSessionId(sessionId) {
+  return typeof sessionId === 'string' && sessionId.length > 0
+    ? sessionId
+    : DEFAULT_SESSION_ID;
+}
+
+function getSession(sessionId) {
+  const normalized = normalizeSessionId(sessionId);
+  let session = sessions.get(normalized);
+  if (!session) {
+    session = {
+      simulator: null,
+      clients: new Set(),
+      pending: new Map(),
+    };
+    sessions.set(normalized, session);
+  }
+  return session;
+}
+
+function deleteSessionIfEmpty(sessionId) {
+  const normalized = normalizeSessionId(sessionId);
+  const session = sessions.get(normalized);
+  if (
+    session &&
+    !session.simulator &&
+    session.clients.size === 0 &&
+    session.pending.size === 0
+  ) {
+    sessions.delete(normalized);
+  }
+}
+
+function rejectPending(session, code, message) {
+  for (const [id, client] of session.pending) {
+    send(client, {
+      type: 'response',
+      id,
+      ok: false,
+      error: {code, message},
+    });
+  }
+  session.pending.clear();
 }
 
 function send(ws, obj) {

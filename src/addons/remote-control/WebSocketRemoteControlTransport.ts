@@ -1,5 +1,6 @@
 import {
   createHello,
+  REMOTE_CONTROL_DEFAULT_SESSION_ID,
   isRemoteControlRequest,
   parseRemoteControlMessage,
   type RemoteControlOutgoingMessage,
@@ -9,6 +10,7 @@ import {
 
 export type WebSocketRemoteControlTransportOptions = {
   url?: string;
+  sessionId?: string;
   reconnect?: boolean;
   reconnectDelayMs?: number;
 };
@@ -22,6 +24,7 @@ export class WebSocketRemoteControlTransport {
   private stopped = false;
   private reconnectTimer?: number;
   private readonly url: string;
+  private readonly sessionId: string;
   private readonly reconnect: boolean;
   private readonly reconnectDelayMs: number;
   private simulatorReady = false;
@@ -31,6 +34,7 @@ export class WebSocketRemoteControlTransport {
     private handleRequest: RemoteControlCommandHandler
   ) {
     this.url = options.url ?? 'ws://127.0.0.1:8791';
+    this.sessionId = options.sessionId ?? REMOTE_CONTROL_DEFAULT_SESSION_ID;
     this.reconnect = options.reconnect ?? false;
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1000;
   }
@@ -56,12 +60,12 @@ export class WebSocketRemoteControlTransport {
 
   announceSimulatorReady() {
     this.simulatorReady = true;
-    this.send(createHello('simulator'));
+    this.send(createHello('simulator', this.sessionId));
   }
 
   private onOpen = () => {
     if (this.simulatorReady) {
-      this.send(createHello('simulator'));
+      this.send(createHello('simulator', this.sessionId));
     }
   };
 

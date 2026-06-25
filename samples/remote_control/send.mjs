@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 
 const url = process.env.REMOTE_CONTROL_URL || 'ws://127.0.0.1:8791';
+const sessionId = process.env.REMOTE_CONTROL_SESSION || 'default';
 const command = process.argv[2] || 'observe';
 const extraJson =
   command === 'tool' || command === 'call-tool'
@@ -37,6 +38,7 @@ ws.addEventListener('open', () => {
     JSON.stringify({
       type: 'hello',
       role: 'client',
+      sessionId,
       protocolVersion: 1,
       client: 'xrblocks-remote-control-smoke-cli',
     })

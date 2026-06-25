@@ -6,6 +6,8 @@ import {RemoteControl} from 'xrblocks/addons/remote-control/index.js';
 const RELAY_URL =
   new URLSearchParams(location.search).get('remoteControlUrl') ||
   'ws://127.0.0.1:8791';
+const SESSION_ID =
+  new URLSearchParams(location.search).get('remoteControlSession') || 'default';
 
 const options = RemoteControl.configureOptions(new xb.Options());
 options.setAppTitle('Remote Control Smoke Test');
@@ -36,7 +38,7 @@ class RemoteControlSmokeScene extends xb.Script {
 
     this.label = document.createElement('aside');
     this.label.id = 'remote-control-smoke-status';
-    this.label.textContent = `Remote control relay: ${RELAY_URL}`;
+    this.label.textContent = `Remote control relay: ${RELAY_URL}\nSession: ${SESSION_ID}`;
     Object.assign(this.label.style, {
       position: 'fixed',
       left: '16px',
@@ -97,6 +99,7 @@ class RemoteControlSmokeScene extends xb.Script {
     const [x, y, z] = this.cube.position.toArray();
     this.label.textContent =
       `Remote control relay: ${RELAY_URL}\n` +
+      `Session: ${SESSION_ID}\n` +
       `Last tool: ${action}\n` +
       `Cube position: ${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}\n` +
       `Nudges: ${this.nudgeCount}`;
@@ -109,6 +112,7 @@ xb.add(smokeScene);
 xb.add(
   new RemoteControl({
     url: RELAY_URL,
+    sessionId: SESSION_ID,
     reconnect: true,
     embodiedOptions: {autoPause: true, realTime: true},
     tools: {
